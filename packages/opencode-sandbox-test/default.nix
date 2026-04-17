@@ -1,1 +1,1 @@
-{ inputs, pkgs, ... } @ args: import ./test.nix args
+{ flake, inputs, pkgs, ... } @ args: import ./test.nix args

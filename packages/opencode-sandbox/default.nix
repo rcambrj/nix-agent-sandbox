@@ -5,6 +5,7 @@ let
   # https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/index.ts
   # The default TUI entrypoint is `$0 [project]` in:
   # https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/cli/cmd/tui/thread.ts
+  # Aliases are intentionally excluded unless verified from upstream source.
   opencodeCommands = [
     "acp"
     "mcp"
@@ -47,13 +48,11 @@ let
     system = guestSystem;
     specialArgs = {
       inherit flake inputs;
-      opencodeSandboxArgsFile = "/run/opencode-sandbox-host/opencode-args";
-      opencodeSandboxEnv = { };
-      opencodeSandboxExtraArgs = [ ];
       opencodeSandboxShowMarkers = false;
       perSystem = guestPerSystem;
     };
     modules = [
+      (inputs.nixpkgs + "/nixos/modules/virtualisation/qemu-vm.nix")
       ./guest-module.nix
       {
         nixpkgs.hostPlatform = guestSystem;
@@ -85,14 +84,37 @@ pkgs.writeShellApplication {
     pkgs.coreutils
   ];
 
+  meta.license = pkgs.lib.licenses.mit;
+
   text = ''
     set -euo pipefail
 
     share_path="$PWD"
     opencode_args=()
+    env_files=()
+
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --env-file)
+          shift
+          if [ "$#" -eq 0 ]; then
+            printf 'opencode-sandbox: --env-file requires a path\n' >&2
+            exit 2
+          fi
+          env_files+=("$1")
+          shift
+          ;;
+        *)
+          break
+          ;;
+      esac
+    done
 
     if [ "$#" -gt 0 ]; then
       case "$1" in
+        -*)
+          opencode_args+=("$@")
+          ;;
         ${builtins.concatStringsSep "|" opencodeCommands})
           opencode_args+=("$@")
           ;;
@@ -118,6 +140,13 @@ pkgs.writeShellApplication {
     for arg in "''${opencode_args[@]}"; do
       printf '%s\n' "$arg" >> "$runtime_dir/opencode-args"
     done
+
+    if [ ''${#env_files[@]} -gt 0 ]; then
+      : > "$runtime_dir/opencode-env"
+      for f in "''${env_files[@]}"; do
+        cat "$f" >> "$runtime_dir/opencode-env"
+      done
+    fi
 
     set -- ${vmRunner}/bin/run-*-vm
     if [ "$#" -ne 1 ]; then

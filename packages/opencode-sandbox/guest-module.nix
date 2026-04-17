@@ -1,14 +1,11 @@
-{ inputs, lib, perSystem, pkgs, ... }:
+{ lib, pkgs, ... }:
 
 let
   consoleDevice = if pkgs.stdenv.hostPlatform.isAarch64 then "ttyAMA0" else "ttyS0";
   consolePath = "/dev/${consoleDevice}";
 in
 {
-  imports = [
-    (inputs.nixpkgs + "/nixos/modules/virtualisation/qemu-vm.nix")
-    ./session-module.nix
-  ];
+  imports = [ ./session-module.nix ];
 
   boot.loader.grub.enable = false;
   boot.kernelParams = [

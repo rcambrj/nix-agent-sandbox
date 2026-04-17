@@ -1,39 +1,26 @@
-{
-  lib,
-  opencodeSandboxArgsFile ? "/run/opencode-sandbox-host/opencode-args",
-  opencodeSandboxEnv ? { },
-  opencodeSandboxExtraArgs ? [ ],
-  opencodeSandboxShowMarkers ? false,
-  perSystem,
-  pkgs,
-  ...
-}:
+{ lib, opencodeSandboxShowMarkers ? false, perSystem, pkgs, ... }:
 
 let
   opencode = pkgs.writeShellScriptBin "opencode" ''
     OPENCODE_ENABLE_EXA=1 exec ${lib.getExe perSystem.opencode.opencode} "$@"
   '';
 
-  envExports = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (name: value: ''
-      export ${name}=${lib.escapeShellArg value}
-    '') opencodeSandboxEnv
-  );
-
   session = pkgs.writeShellScriptBin "opencode-sandbox-session" ''
     set -euo pipefail
 
     export HOME=/root
-    ${envExports}
     cd /workspace
 
-    declare -a args=()
-    if [ -r ${lib.escapeShellArg opencodeSandboxArgsFile} ]; then
-      mapfile -t args < ${lib.escapeShellArg opencodeSandboxArgsFile}
+    if [ -r /run/opencode-sandbox-host/opencode-env ]; then
+      set -a
+      source /run/opencode-sandbox-host/opencode-env
+      set +a
     fi
-    ${lib.optionalString (opencodeSandboxExtraArgs != [ ]) ''
-      args+=(${lib.escapeShellArgs opencodeSandboxExtraArgs})
-    ''}
+
+    declare -a args=()
+    if [ -r /run/opencode-sandbox-host/opencode-args ]; then
+      mapfile -t args < /run/opencode-sandbox-host/opencode-args
+    fi
 
     ${lib.optionalString opencodeSandboxShowMarkers ''
       printf '\n=== Starting opencode in /workspace ===\n'

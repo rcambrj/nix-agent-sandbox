@@ -1,59 +1,53 @@
-{ inputs, pkgs, ... }:
+{ flake, pkgs, ... }:
 
 let
   hostPkgs = pkgs;
   hostSystem = hostPkgs.stdenv.hostPlatform.system;
-  guestSystem =
-    {
-      aarch64-darwin = "aarch64-linux";
-      aarch64-linux = "aarch64-linux";
-      x86_64-linux = "x86_64-linux";
-    }.${hostSystem} or (throw "opencode-sandbox-test does not support host system ${hostSystem}");
-
-  guestPerSystem = {
-    opencode = inputs.opencode.packages.${guestSystem};
-  };
+  launcher = hostPkgs.lib.getExe flake.packages.${hostSystem}.opencode-sandbox;
 in
 hostPkgs.testers.runNixOSTest {
   name = "opencode-sandbox";
 
-  nodes.machine = { pkgs, ... }: let
-    consoleDevice = if guestSystem == "aarch64-linux" then "ttyAMA0" else "ttyS0";
-  in {
-    imports = [
-      ../opencode-sandbox/session-module.nix
-    ];
-
-    _module.args.perSystem = guestPerSystem;
-    _module.args.opencodeSandboxArgsFile = "/run/opencode-sandbox-host/opencode-args";
-    _module.args.opencodeSandboxEnv = {
-      OPENCODE_DISABLE_MODELS_FETCH = "1";
-    };
-    _module.args.opencodeSandboxExtraArgs = [ "models" ];
-    _module.args.opencodeSandboxShowMarkers = true;
-
-    systemd.services."serial-getty@${consoleDevice}".enable = false;
-    systemd.services.opencode-sandbox-session.serviceConfig.TTYPath = "/dev/${consoleDevice}";
-
-    boot.kernelParams = [
-      "console=${consoleDevice}"
-    ];
-
-    networking.hostName = "opencode-sandbox";
-    systemd.tmpfiles.rules = [
-      "d /workspace 0755 root root -"
-    ];
-
-    system.stateVersion = "25.11";
-  };
+  nodes = {};
 
   testScript = ''
-    start_all()
+    import os
+    import subprocess
+    import tempfile
 
-    machine.wait_for_console_text(r"=== Starting opencode in /workspace ===")
-    machine.wait_for_console_text(r"=== opencode args: models ===")
-    machine.wait_for_console_text(r"Database migration complete\.")
-    machine.wait_for_console_text(r"=== opencode exit code: 0 ===")
-    machine.wait_for_shutdown()
+    launcher = ${builtins.toJSON launcher}
+
+    env_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-env-")
+    env_file = os.path.join(env_dir, "env")
+    with open(env_file, "w") as f:
+        f.write("OPENCODE_DISABLE_MODELS_FETCH=1\n")
+
+    def run(*args):
+        result = subprocess.run(
+            [launcher, "--env-file", env_file, *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            raise Exception(f"exit {result.returncode}: {result.stdout}")
+        return result.stdout
+
+    out = run("models")
+    assert "Database migration complete." in out and "opencode-go/" in out
+
+    out = run("--help")
+    assert "Options:" in out and "show help" in out
+
+    tmpdir = tempfile.mkdtemp(prefix="opencode-sandbox-share-")
+    try:
+        out = run(tmpdir, "--help")
+        assert "Options:" in out and "show help" in out
+    finally:
+        os.rmdir(tmpdir)
+
+    os.remove(env_file)
+    os.rmdir(env_dir)
   '';
 }
