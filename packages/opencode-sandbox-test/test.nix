@@ -47,16 +47,19 @@ hostPkgs.testers.runNixOSTest {
             raise Exception(f"exit {result.returncode}: {result.stdout}")
         return result.stdout
 
-    out = run("models")
+    out = run("--", "models")
     assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
     assert "opencode/" in out, f"expected 'opencode/' in output, got: {out!r}"
 
-    out = run("--help")
+    out = run("--", "--help")
     assert "Options:" in out and "show help" in out
+
+    out = run(f"--config-dir={config_dir}", "--", "models")
+    assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
 
     tmpdir = tempfile.mkdtemp(prefix="opencode-sandbox-share-")
     try:
-        out = run(tmpdir, "--help")
+        out = run(tmpdir, f"--config-dir={config_dir}", "--", "--help")
         assert "Options:" in out and "show help" in out
     finally:
         os.rmdir(tmpdir)
@@ -64,7 +67,7 @@ hostPkgs.testers.runNixOSTest {
     data_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-data-")
     cache_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-cache-")
     try:
-        out = run("models", data_dir_arg=data_dir, cache_dir_arg=cache_dir)
+        out = run("--", "models", data_dir_arg=data_dir, cache_dir_arg=cache_dir)
         assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
     finally:
         shutil.rmtree(data_dir)

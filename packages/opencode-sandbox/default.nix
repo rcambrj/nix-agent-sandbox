@@ -115,8 +115,16 @@ pkgs.writeShellApplication {
     has_data_dir=0
     has_cache_dir=0
 
+    post_separator_args=()
+    saw_share_path=0
+
     while [ "$#" -gt 0 ]; do
       case "$1" in
+        --)
+          shift
+          post_separator_args+=("$@")
+          break
+          ;;
         --env-file)
           shift
           if [ "$#" -eq 0 ]; then
@@ -124,6 +132,10 @@ pkgs.writeShellApplication {
             exit 2
           fi
           env_files+=("$1")
+          shift
+          ;;
+        --env-file=*)
+          env_files+=("''${1#--env-file=}")
           shift
           ;;
         --config-dir)
@@ -135,6 +147,10 @@ pkgs.writeShellApplication {
           config_dir="$1"
           shift
           ;;
+        --config-dir=*)
+          config_dir="''${1#--config-dir=}"
+          shift
+          ;;
         --data-dir)
           shift
           if [ "$#" -eq 0 ]; then
@@ -142,6 +158,11 @@ pkgs.writeShellApplication {
             exit 2
           fi
           data_dir="$1"
+          has_data_dir=1
+          shift
+          ;;
+        --data-dir=*)
+          data_dir="''${1#--data-dir=}"
           has_data_dir=1
           shift
           ;;
@@ -155,27 +176,28 @@ pkgs.writeShellApplication {
           has_cache_dir=1
           shift
           ;;
+        --cache-dir=*)
+          cache_dir="''${1#--cache-dir=}"
+          has_cache_dir=1
+          shift
+          ;;
+        -*)
+          printf 'opencode-sandbox: unknown launcher flag before --: %s\n' "$1" >&2
+          exit 2
+          ;;
         *)
-          break
+          if [ "$saw_share_path" -eq 1 ]; then
+            printf 'opencode-sandbox: unexpected launcher argument before --: %s\n' "$1" >&2
+            exit 2
+          fi
+          share_path="$1"
+          saw_share_path=1
+          shift
           ;;
       esac
     done
 
-    if [ "$#" -gt 0 ]; then
-      case "$1" in
-        -*)
-          opencode_args+=("$@")
-          ;;
-        ${builtins.concatStringsSep "|" opencodeCommands})
-          opencode_args+=("$@")
-          ;;
-        *)
-          share_path="$1"
-          shift
-          opencode_args+=("$@")
-          ;;
-      esac
-    fi
+    opencode_args+=("''${post_separator_args[@]}")
 
     share_path="$(${pkgs.coreutils}/bin/realpath "$share_path")"
 
