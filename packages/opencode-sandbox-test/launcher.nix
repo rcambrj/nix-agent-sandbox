@@ -11,6 +11,7 @@ hostPkgs.testers.runNixOSTest {
   nodes = {};
 
   testScript = ''
+    import glob
     import os
     import json
     import shutil
@@ -113,7 +114,7 @@ hostPkgs.testers.runNixOSTest {
         out = run("--", "models", data_dir_arg=data_dir, cache_dir_arg=cache_dir)
         assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
         assert os.path.isdir(os.path.join(data_dir, "log")), "expected XDG data log directory to be created"
-        assert not os.path.exists(os.path.join(data_dir, "opencode.db")), "expected no persistent DB file when OPENCODE_DB=:memory:"
+        assert not glob.glob(os.path.join(data_dir, "opencode-*.db")), "expected no persistent DB files matching opencode-*.db when OPENCODE_DB=:memory:"
         assert os.path.isfile(os.path.join(cache_dir, "version")), "expected XDG cache version file to be created"
 
         combined_config_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-combined-config-")

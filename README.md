@@ -132,10 +132,19 @@ opencode-sandbox -- /projects/my-project
 
 ## Notes
 
+> [!NOTE]
+> The `OPENCODE_DB` environment variable is hardcoded to `:memory:` so that opencode doesn't create an sqlite database on disk. This is because the sqlite database is stored on the `dataDir` mount via a QEMU 9p share. Unfortunately QEMU's 9p doesn't handle sqlite database locks (at all) so having multiple instances of opencode-sandbox running would likely result in a corrupted sqlite database very quickly.
+>
+> The opencode team have said that [they will not support other databases](https://github.com/anomalyco/opencode/issues/7840#issuecomment-3901180429).
+>
+> TODO: determine which features are missing as a result
+
+> [!WARNING]
+> `envFile`, `configDir`, `dataDir`, and `cacheDir` are exposed read-write inside the guest. Take care what you put there.
+
 > [!CAUTION]
+> Don't run this as root.
+>
 > The guest VM mounts the host's nix store. QEMU's 9p filesystem sharing supports restricting a share as readonly, but [nixpkgs qemu-vm.nix doesn't set that](https://github.com/NixOS/nixpkgs/blob/4bd9165a9165d7b5e33ae57f3eecbcb28fb231c9/nixos/modules/virtualisation/qemu-vm.nix#L320), and the default is readwrite. This means that if you start this sandbox as a user who has access to the nix store, the root user in the VM could write to the host's store. In practice, don't run this sandbox as root and you'll be OK.
 >
 > TODO: add `readonly` to nixpkgs `qemu-vm.nix`
-
-> [!WARNING]
-> `envFile`, `configDir`, `dataDir`, and `cacheDir` are exposed via XDG paths inside the guest. Take care what you put there.
