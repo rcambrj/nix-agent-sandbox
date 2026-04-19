@@ -4,7 +4,6 @@ let
   cfg = config.programs."opencode-sandbox";
 
   pkg = flake.packages.${pkgs.stdenv.hostPlatform.system}.opencode-sandbox;
-  optionalFlag = name: value: lib.optionalString (value != null) "--${name} ${lib.escapeShellArg (toString value)}";
 in
 {
   options.programs."opencode-sandbox" = {
@@ -77,17 +76,17 @@ in
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [
-      (pkgs.writeShellScriptBin "opencode-sandbox" ''
-        exec ${lib.getExe (if cfg.package != null then cfg.package else pkg.override {
+      flake.lib.mkWrappedOpencodeSandbox {
+        inherit pkgs;
+        package = if cfg.package != null then cfg.package else pkg.override {
           extraModules = cfg.extraModules;
           showBootLogs = cfg.showBootLogs;
-        })} \
-          ${optionalFlag "env-file" cfg.envFile} \
-          ${optionalFlag "config-dir" cfg.configDir} \
-          ${optionalFlag "data-dir" cfg.dataDir} \
-          ${optionalFlag "cache-dir" cfg.cacheDir} \
-          "$@"
-      '')
+        };
+        envFile = cfg.envFile;
+        configDir = cfg.configDir;
+        dataDir = cfg.dataDir;
+        cacheDir = cfg.cacheDir;
+      }
     ];
   };
 }
