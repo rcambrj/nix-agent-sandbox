@@ -12,9 +12,17 @@ in
     enable = lib.mkEnableOption "the opencode sandbox launcher";
 
     extraModules = lib.mkOption {
-      type = lib.types.listOf lib.types.deferredModule;
+      type = lib.types.listOf (lib.types.either lib.types.attrs lib.types.unspecified);
       default = [ ];
-      description = "Additional guest NixOS modules to include in the opencode sandbox VM.";
+      description = ''
+        Additional guest NixOS modules to include in the opencode sandbox VM.
+
+        Each entry can be:
+        - An attrset (a plain NixOS module): `{ ... }`
+        - A function that receives the guest system's pkgs and returns an attrset: `pkgs: { ... }`
+
+        Multiple functions are supported and their results are concatenated.
+      '';
     };
 
     showBootLogs = lib.mkOption {

@@ -16,6 +16,26 @@ let
     opencode = inputs.opencode.packages.${guestSystem};
   };
 
+  guestPkgs = import inputs.nixpkgs {
+    system = guestSystem;
+  };
+
+  normalizeExtraModules = modules:
+    builtins.map (entry:
+      if builtins.isAttrs entry then
+        entry
+      else if builtins.isFunction entry then
+        let
+          result = entry guestPkgs;
+        in
+          if builtins.isAttrs result then
+            result
+          else
+            throw "extraModules function must return an attrset, got: ${builtins.typeOf result}"
+      else
+        throw "extraModules entries must be attrsets or functions, got: ${builtins.typeOf entry}"
+    ) modules;
+
   vmSystem = inputs.nixpkgs.lib.nixosSystem {
     system = guestSystem;
     specialArgs = {
@@ -31,7 +51,7 @@ let
         nixpkgs.hostPlatform = guestSystem;
         virtualisation.host.pkgs = hostPkgs;
       }
-    ] ++ extraModules;
+    ] ++ normalizeExtraModules extraModules;
   };
 
   vmRunner = vmSystem.config.system.build.vm;

@@ -62,6 +62,28 @@ hostPkgs.testers.runNixOSTest {
     };
   };
 
+  nodes.machineWithExtraModules = {
+    imports = [
+      flake.nixosModules.opencode-sandbox
+    ];
+
+    programs.opencode-sandbox = {
+      enable = true;
+      package = mockPackage;
+      configDir = pkgs.writeTextDir "opencode.json" (builtins.toJSON {
+        "$schema" = "https://opencode.ai/config.json";
+      });
+      extraModules = [
+        {
+          users.users.root.shell = pkgs.bash;
+        }
+        (guestPkgs: {
+          environment.systemPackages = [ guestPkgs.hello ];
+        })
+      ];
+    };
+  };
+
   testScript = ''
     def run_opencode_sandbox(machine, *args):
         result = machine.succeed("opencode-sandbox " + " ".join(args))
@@ -114,5 +136,10 @@ hostPkgs.testers.runNixOSTest {
     out = run_opencode_sandbox(machine, "--", "serve", "--hostname", "0.0.0.0")
     args = parse_args(out)
     assert "serve" in args and "--hostname" in args and "0.0.0.0" in args, f"expected multiple args after -- to be forwarded, got: {args!r}"
+
+    machineWithExtraModules.wait_for_unit("multi-user.target")
+
+    machineWithExtraModules.succeed("hello")
+    machineWithExtraModules.succeed("grep -q bash /etc/passwd")
   '';
 }

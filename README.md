@@ -100,10 +100,16 @@ Import the NixOS module into your system configuration and enable it:
     cacheDir = /persist/opencode/cache;
     showBootLogs = false;
     extraModules = [
+      # Plain attrset module
       {
         # for `opencode-sandbox -- serve --hostname 0.0.0.0 --port 4096`
         networking.firewall.allowedTCPPorts = [ 4096 ];
       }
+
+      # Function that receives the guest system's pkgs
+      (pkgs: {
+        environment.systemPackages = [ pkgs.hello ];
+      })
     ];
   };
 }
