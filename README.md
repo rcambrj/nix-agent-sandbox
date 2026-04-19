@@ -59,6 +59,7 @@ Import the NixOS module and enable it:
     configDir = let
       opencode-json = pkgs.writeText "opencode.json" (builtins.toJSON {
         "$schema" = "https://opencode.ai/config.json";
+        autoupdate = false;
         permission = {
           # sandboxed as root, go wild
           "*" = "allow";
