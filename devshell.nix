@@ -3,6 +3,7 @@ pkgs.mkShell {
   packages = [
     (flake.lib.mkWrappedOpencodeSandbox {
       inherit pkgs;
+      name = "opencode-sandbox-dev";
       package = flake.packages.${pkgs.stdenv.hostPlatform.system}.opencode-sandbox.override {
         extraModules = [];
         showBootLogs = false;
