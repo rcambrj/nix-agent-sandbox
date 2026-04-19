@@ -6,7 +6,7 @@ let
   launcher = hostPkgs.lib.getExe flake.packages.${hostSystem}.opencode-sandbox;
 in
 hostPkgs.testers.runNixOSTest {
-  name = "opencode-sandbox";
+  name = "opencode-sandbox-launcher";
 
   nodes = {};
 
