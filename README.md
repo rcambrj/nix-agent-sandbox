@@ -132,4 +132,10 @@ opencode-sandbox -- /projects/my-project
 
 ## Notes
 
-- `envFile`, `configDir`, `dataDir`, and `cacheDir` are exposed via XDG paths inside the guest, take care what you put here as the model has full unrestricted access to them.
+> [!CAUTION]
+> The guest VM mounts the host's nix store. QEMU's 9p filesystem sharing supports restricting a share as readonly, but [nixpkgs qemu-vm.nix doesn't set that](https://github.com/NixOS/nixpkgs/blob/4bd9165a9165d7b5e33ae57f3eecbcb28fb231c9/nixos/modules/virtualisation/qemu-vm.nix#L320), and the default is readwrite. This means that if you start this sandbox as a user who has access to the nix store, the root user in the VM could write to the host's store. In practice, don't run this sandbox as root and you'll be OK.
+>
+> TODO: add `readonly` to nixpkgs `qemu-vm.nix`
+
+> [!WARNING]
+> `envFile`, `configDir`, `dataDir`, and `cacheDir` are exposed via XDG paths inside the guest, take care what you put here as the model has full unrestricted access to them.
