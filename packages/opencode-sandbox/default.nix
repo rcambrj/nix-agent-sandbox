@@ -68,55 +68,17 @@ pkgs.writeShellApplication {
           opencode_args+=("$@")
           break
           ;;
-        --env-file)
-          shift
-          if [ "$#" -eq 0 ]; then
-            printf 'opencode-sandbox: --env-file requires a path\n' >&2
-            exit 2
-          fi
-          env_files+=("$1")
-          shift
-          ;;
         --env-file=*)
           env_files+=("''${1#--env-file=}")
-          shift
-          ;;
-        --config-dir)
-          shift
-          if [ "$#" -eq 0 ]; then
-            printf 'opencode-sandbox: --config-dir requires a path\n' >&2
-            exit 2
-          fi
-          config_dir="$1"
           shift
           ;;
         --config-dir=*)
           config_dir="''${1#--config-dir=}"
           shift
           ;;
-        --data-dir)
-          shift
-          if [ "$#" -eq 0 ]; then
-            printf 'opencode-sandbox: --data-dir requires a path\n' >&2
-            exit 2
-          fi
-          data_dir="$1"
-          has_data_dir=1
-          shift
-          ;;
         --data-dir=*)
           data_dir="''${1#--data-dir=}"
           has_data_dir=1
-          shift
-          ;;
-        --cache-dir)
-          shift
-          if [ "$#" -eq 0 ]; then
-            printf 'opencode-sandbox: --cache-dir requires a path\n' >&2
-            exit 2
-          fi
-          cache_dir="$1"
-          has_cache_dir=1
           shift
           ;;
         --cache-dir=*)

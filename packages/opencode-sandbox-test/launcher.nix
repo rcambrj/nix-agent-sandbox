@@ -29,13 +29,13 @@ hostPkgs.testers.runNixOSTest {
     def run(*args, env_file_arg=env_file, config_dir_arg=config_dir, data_dir_arg=None, cache_dir_arg=None):
         cmd = [launcher]
         if env_file_arg is not None:
-            cmd += ["--env-file", env_file_arg]
+            cmd += [f"--env-file={env_file_arg}"]
         if config_dir_arg is not None:
-            cmd += ["--config-dir", config_dir_arg]
+            cmd += [f"--config-dir={config_dir_arg}"]
         if data_dir_arg is not None:
-            cmd += ["--data-dir", data_dir_arg]
+            cmd += [f"--data-dir={data_dir_arg}"]
         if cache_dir_arg is not None:
-            cmd += ["--cache-dir", cache_dir_arg]
+            cmd += [f"--cache-dir={cache_dir_arg}"]
         cmd += list(args)
         result = subprocess.run(
             cmd,
@@ -51,13 +51,13 @@ hostPkgs.testers.runNixOSTest {
     def run_fail(*args, env_file_arg=env_file, config_dir_arg=config_dir, data_dir_arg=None, cache_dir_arg=None):
         cmd = [launcher]
         if env_file_arg is not None:
-            cmd += ["--env-file", env_file_arg]
+            cmd += [f"--env-file={env_file_arg}"]
         if config_dir_arg is not None:
-            cmd += ["--config-dir", config_dir_arg]
+            cmd += [f"--config-dir={config_dir_arg}"]
         if data_dir_arg is not None:
-            cmd += ["--data-dir", data_dir_arg]
+            cmd += [f"--data-dir={data_dir_arg}"]
         if cache_dir_arg is not None:
-            cmd += ["--cache-dir", cache_dir_arg]
+            cmd += [f"--cache-dir={cache_dir_arg}"]
         cmd += list(args)
         result = subprocess.run(
             cmd,

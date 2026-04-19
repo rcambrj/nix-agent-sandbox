@@ -15,9 +15,9 @@ nix run .#opencode-sandbox
 
 # Pass sandbox args after one `--`:
 nix run .#opencode-sandbox -- ~/projects/my-project \
-  --data-dir ./data \
-  --cache-dir ./cache \
-  --config-dir ./config
+  --data-dir=./data \
+  --cache-dir=./cache \
+  --config-dir=./config
 
 # Pass `opencode` arguments after *another* `--`:
 nix run .#opencode-sandbox -- -- --help
@@ -117,9 +117,9 @@ opencode-sandbox
 
 # Pass sandbox args before `--`:
 opencode-sandbox ~/projects/my-project \
-  --data-dir ./data \
-  --cache-dir ./cache \
-  --config-dir ./config
+  --data-dir=./data \
+  --cache-dir=./cache \
+  --config-dir=./config
 
 # Pass `opencode` arguments after `--`:
 opencode-sandbox -- --help
@@ -138,4 +138,4 @@ opencode-sandbox -- /projects/my-project
 > TODO: add `readonly` to nixpkgs `qemu-vm.nix`
 
 > [!WARNING]
-> `envFile`, `configDir`, `dataDir`, and `cacheDir` are exposed via XDG paths inside the guest, take care what you put here as the model has full unrestricted access to them.
+> `envFile`, `configDir`, `dataDir`, and `cacheDir` are exposed via XDG paths inside the guest. Take care what you put there.
