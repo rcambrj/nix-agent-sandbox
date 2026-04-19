@@ -49,7 +49,7 @@ Import the NixOS module into your system configuration and enable it:
   programs.opencode-sandbox = {
     enable = true;
 
-    envFile = pkgs.writeText "opencode-sandbox-env" (lib.generators.toINI { } {
+    envFile = pkgs.writeText "opencode-sandbox-env" (lib.generators.toKeyValue { } {
       OPENCODE_ENABLE_EXA = 1;
 
       # DON'T put real API keys into the nix store
