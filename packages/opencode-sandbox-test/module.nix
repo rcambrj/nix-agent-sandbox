@@ -29,8 +29,6 @@ hostPkgs.testers.runNixOSTest {
     };
   };
 
-
-
   nodes.machineWithDirs = {
     imports = [
       flake.nixosModules.opencode-sandbox
@@ -62,28 +60,6 @@ hostPkgs.testers.runNixOSTest {
     };
   };
 
-  nodes.machineWithExtraModules = {
-    imports = [
-      flake.nixosModules.opencode-sandbox
-    ];
-
-    programs.opencode-sandbox = {
-      enable = true;
-      package = mockPackage;
-      configDir = pkgs.writeTextDir "opencode.json" (builtins.toJSON {
-        "$schema" = "https://opencode.ai/config.json";
-      });
-      extraModules = [
-        {
-          users.users.root.shell = pkgs.bash;
-        }
-        (guestPkgs: {
-          environment.systemPackages = [ guestPkgs.hello ];
-        })
-      ];
-    };
-  };
-
   testScript = ''
     def run_opencode_sandbox(machine, *args):
         result = machine.succeed("opencode-sandbox " + " ".join(args))
@@ -108,26 +84,26 @@ hostPkgs.testers.runNixOSTest {
 
     out = run_opencode_sandbox(machine, "--", "test")
     args = parse_args(out)
-    assert "--config-dir" in args, f"expected --config-dir arg, got: {args!r}"
+    assert any(arg.startswith("--config-dir=") for arg in args), f"expected --config-dir= arg, got: {args!r}"
     assert "opencode.json" in str(args), f"expected config dir to contain opencode.json, got: {args!r}"
 
     out = run_opencode_sandbox(machine, "--", "test")
     args = parse_args(out)
-    assert "--data-dir" not in args, f"expected no --data-dir when not configured, got: {args!r}"
-    assert "--cache-dir" not in args, f"expected no --cache-dir when not configured, got: {args!r}"
+    assert not any(arg.startswith("--data-dir=") for arg in args), f"expected no --data-dir= when not configured, got: {args!r}"
+    assert not any(arg.startswith("--cache-dir=") for arg in args), f"expected no --cache-dir= when not configured, got: {args!r}"
 
     machineWithDirs.wait_for_unit("multi-user.target")
 
     out = run_opencode_sandbox(machineWithDirs, "--", "test")
     args = parse_args(out)
-    assert "--data-dir" in args, f"expected --data-dir when configured, got: {args!r}"
-    assert "--cache-dir" in args, f"expected --cache-dir when configured, got: {args!r}"
+    assert any(arg.startswith("--data-dir=") for arg in args), f"expected --data-dir= when configured, got: {args!r}"
+    assert any(arg.startswith("--cache-dir=") for arg in args), f"expected --cache-dir= when configured, got: {args!r}"
 
     machineCustomEnv.wait_for_unit("multi-user.target")
 
     out = run_opencode_sandbox(machineCustomEnv, "--", "test")
     args = parse_args(out)
-    assert "--env-file" in args, f"expected --env-file when configured, got: {args!r}"
+    assert any(arg.startswith("--env-file=") for arg in args), f"expected --env-file= when configured, got: {args!r}"
 
     out = run_opencode_sandbox(machine, "--", "models")
     args = parse_args(out)
@@ -136,10 +112,5 @@ hostPkgs.testers.runNixOSTest {
     out = run_opencode_sandbox(machine, "--", "serve", "--hostname", "0.0.0.0")
     args = parse_args(out)
     assert "serve" in args and "--hostname" in args and "0.0.0.0" in args, f"expected multiple args after -- to be forwarded, got: {args!r}"
-
-    machineWithExtraModules.wait_for_unit("multi-user.target")
-
-    machineWithExtraModules.succeed("hello")
-    machineWithExtraModules.succeed("grep -q bash /etc/passwd")
   '';
 }

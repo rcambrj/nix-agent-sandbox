@@ -7,6 +7,7 @@ let
     set -euo pipefail
 
     export HOME=/root
+    export SHELL=${pkgs.bashInteractive}/bin/bash
     export OPENCODE_DB=:memory:
     export XDG_CONFIG_HOME=/mnt/opencode-sandbox/config
 
@@ -57,7 +58,7 @@ let
     ''}
 
     set +e
-    ${lib.getExe opencode} "''${args[@]}"
+    ${pkgs.bashInteractive}/bin/bash -l -c ${lib.escapeShellArg "${lib.getExe opencode} \"\$@\""} bash "''${args[@]}"
     rc=$?
     set -e
 
