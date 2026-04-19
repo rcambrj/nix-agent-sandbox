@@ -1,9 +1,11 @@
-{ config, flake, lib, pkgs, ... }:
+{ flake, ... }:
+{ config, lib, pkgs, ... }:
 
 let
   cfg = config.programs."opencode-sandbox";
 
-  pkg = flake.packages.${pkgs.stdenv.hostPlatform.system}.opencode-sandbox;
+  pkgsFor = flake.mkPackagesFor pkgs;
+  pkg = pkgsFor.opencode-sandbox;
 in
 {
   options.programs."opencode-sandbox" = {

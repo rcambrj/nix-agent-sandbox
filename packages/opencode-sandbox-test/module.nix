@@ -19,7 +19,6 @@ hostPkgs.testers.runNixOSTest {
     imports = [
       flake.nixosModules.opencode-sandbox
     ];
-    _module.args = { inherit flake; };
 
     programs.opencode-sandbox = {
       enable = true;
@@ -36,7 +35,6 @@ hostPkgs.testers.runNixOSTest {
     imports = [
       flake.nixosModules.opencode-sandbox
     ];
-    _module.args = { inherit flake; };
 
     programs.opencode-sandbox = {
       enable = true;
@@ -53,7 +51,6 @@ hostPkgs.testers.runNixOSTest {
     imports = [
       flake.nixosModules.opencode-sandbox
     ];
-    _module.args = { inherit flake; };
 
     programs.opencode-sandbox = {
       enable = true;
