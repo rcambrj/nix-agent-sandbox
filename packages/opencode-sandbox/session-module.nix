@@ -1,9 +1,7 @@
 { lib, opencodeSandboxShowMarkers ? false, perSystem, pkgs, ... }:
 
 let
-  opencode = pkgs.writeShellScriptBin "opencode" ''
-    OPENCODE_ENABLE_EXA=1 exec ${lib.getExe perSystem.opencode.opencode} "$@"
-  '';
+  opencode = perSystem.opencode.opencode;
 
   session = pkgs.writeShellScriptBin "opencode-sandbox-session" ''
     set -euo pipefail
