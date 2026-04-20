@@ -2,7 +2,6 @@
 
 let
   consoleDevice = if pkgs.stdenv.hostPlatform.isAarch64 then "ttyAMA0" else "ttyS0";
-  consolePath = "/dev/${consoleDevice}";
 in
 {
   imports = [ ./guest-opencode.nix ];
@@ -55,19 +54,27 @@ in
 
   networking.hostName = "opencode-sandbox";
 
-  systemd.services."serial-getty@${consoleDevice}".enable = lib.mkForce false;
-  systemd.services.opencode-sandbox-session.serviceConfig.TTYPath = consolePath;
+  networking.firewall.allowedTCPPorts = [ 22 ];
 
-  # when will these ever become stable?
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
-
-  # git is going to be useful in 99% of cases
-  # feel free to disable with extraModules
-  programs.git = {
+  services.openssh = {
     enable = true;
-    config.safe.directory = [ "*" ]; # TODO: upstream
+    settings = {
+      PermitRootLogin = "prohibit-password";
+      PasswordAuthentication = false;
+      KbdInteractiveAuthentication = false;
+      StrictModes = false;
+    };
+    authorizedKeysFiles = [ "/mnt/opencode-sandbox/control/authorized_keys" ];
   };
 
+  systemd.services."serial-getty@${consoleDevice}".enable = lib.mkForce false;
+
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+  programs.git = {
+    enable = true;
+    config.safe.directory = [ "*" ];
+  };
 
   system.stateVersion = "25.11";
 }

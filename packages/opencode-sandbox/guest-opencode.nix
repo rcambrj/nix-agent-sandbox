@@ -63,27 +63,13 @@ let
     ${lib.optionalString opencodeSandboxShowMarkers ''
       printf '\n=== opencode exit code: %s ===\n' "$rc"
     ''}
-    ${pkgs.systemd}/bin/poweroff || true
+    (
+      sleep 1
+      ${pkgs.systemd}/bin/poweroff || true
+    ) >/dev/null 2>&1 &
     exit "$rc"
   '';
 in
 {
   environment.systemPackages = [ opencode session ];
-
-  systemd.services.opencode-sandbox-session = {
-    description = "Launch opencode inside the sandbox VM";
-    after = [ "local-fs.target" "systemd-user-sessions.service" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      Type = "simple";
-      StandardInput = "tty";
-      StandardOutput = "tty";
-      StandardError = "tty";
-      TTYReset = true;
-      TTYVHangup = true;
-      TTYVTDisallocate = false;
-      ExecStart = lib.getExe session;
-      Restart = "no";
-    };
-  };
 }

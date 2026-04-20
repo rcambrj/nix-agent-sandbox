@@ -57,6 +57,7 @@ pkgs.writeShellApplication {
 
   runtimeInputs = [
     pkgs.coreutils
+    pkgs.openssh
   ];
 
   meta.license = pkgs.lib.licenses.mit;
@@ -171,6 +172,19 @@ pkgs.writeShellApplication {
       : > "$control_dir/opencode-has-cache-dir"
     fi
 
+    ssh_port=$(( ($$ + RANDOM) % 40000 + 1024 ))
+
+    ssh_client_key="$control_dir/ssh_client_key"
+    ssh_known_hosts="$control_dir/ssh_known_hosts"
+    ssh_log="$control_dir/serial.log"
+
+    ${pkgs.openssh}/bin/ssh-keygen -t ed25519 -f "$ssh_client_key" -N "" -q
+    chmod 600 "$ssh_client_key"
+    ${pkgs.openssh}/bin/ssh-keygen -y -f "$ssh_client_key" > "$control_dir/authorized_keys"
+    chmod 644 "$control_dir/authorized_keys"
+
+    : > "$ssh_known_hosts"
+
     set -- ${vmRunner}/bin/run-*-vm
     if [ "$#" -ne 1 ]; then
       printf 'opencode-sandbox: could not resolve VM runner in %s/bin\n' ${pkgs.lib.escapeShellArg (toString vmRunner)} >&2
@@ -183,7 +197,74 @@ pkgs.writeShellApplication {
     export OPENCODE_SANDBOX_DATA_DIR="$data_dir"
     export OPENCODE_SANDBOX_CACHE_DIR="$cache_dir"
     export NIX_DISK_IMAGE="$control_dir/opencode-sandbox.qcow2"
+    export QEMU_NET_OPTS="hostfwd=tcp:127.0.0.1:$ssh_port-:22"
 
-    exec "$1"
+    vm_runner="$1"
+
+    "$vm_runner" >> "$ssh_log" 2>&1 &
+    vm_pid=$!
+
+    trap 'kill "$vm_pid" 2>/dev/null || true; wait "$vm_pid" 2>/dev/null || true; rm -rf "$control_dir"' EXIT INT TERM
+
+    max_attempts=120
+    attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+      if ${pkgs.openssh}/bin/ssh \
+        -F /dev/null \
+        -i "$ssh_client_key" \
+        -o "UserKnownHostsFile=$ssh_known_hosts" \
+        -o "GlobalKnownHostsFile=/dev/null" \
+        -o "StrictHostKeyChecking=accept-new" \
+        -o "IdentitiesOnly=yes" \
+        -o "PreferredAuthentications=publickey" \
+        -o "BatchMode=yes" \
+        -o "ConnectTimeout=2" \
+        -o "LogLevel=error" \
+        -p "$ssh_port" \
+        root@127.0.0.1 \
+        "exit 0" >/dev/null 2>&1; then
+        break
+      fi
+      attempt=$((attempt + 1))
+
+      if ! kill -0 "$vm_pid" 2>/dev/null; then
+        echo 'opencode-sandbox: VM exited during SSH readiness check' >&2
+        echo >&2
+        echo '--- VM boot log ---' >&2
+        cat "$ssh_log" >&2
+        echo '--- end boot log ---' >&2
+        exit 1
+      fi
+
+      sleep 1
+    done
+
+    if [ $attempt -eq $max_attempts ]; then
+      echo 'opencode-sandbox: SSH readiness timeout' >&2
+      echo >&2
+      echo '--- VM boot log ---' >&2
+      cat "$ssh_log" >&2
+      echo '--- end boot log ---' >&2
+      exit 1
+    fi
+
+    set +e
+    ${pkgs.openssh}/bin/ssh \
+      -F /dev/null \
+      -tt \
+      -i "$ssh_client_key" \
+      -o "UserKnownHostsFile=$ssh_known_hosts" \
+      -o "GlobalKnownHostsFile=/dev/null" \
+      -o "StrictHostKeyChecking=accept-new" \
+      -o "IdentitiesOnly=yes" \
+      -o "PreferredAuthentications=publickey" \
+      -o "LogLevel=quiet" \
+      -p "$ssh_port" \
+      root@127.0.0.1 \
+      "opencode-sandbox-session"
+    ssh_exit=$?
+    set -e
+
+    exit "$ssh_exit"
   '';
 }
