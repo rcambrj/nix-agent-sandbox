@@ -58,5 +58,16 @@ in
   systemd.services."serial-getty@${consoleDevice}".enable = lib.mkForce false;
   systemd.services.opencode-sandbox-session.serviceConfig.TTYPath = consolePath;
 
+  # when will these ever become stable?
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+  # git is going to be useful in 99% of cases
+  # feel free to disable with extraModules
+  programs.git = {
+    enable = true;
+    config.safe.directory = [ "*" ]; # TODO: upstream
+  };
+
+
   system.stateVersion = "25.11";
 }
