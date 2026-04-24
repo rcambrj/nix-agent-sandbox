@@ -1,4 +1,4 @@
-{ flake, pkgs, system, extraModules ? [ ], showBootLogs ? false, ... }:
+{ flake, inputs, pkgs, system, extraModules ? [ ], showBootLogs ? false, ... }:
 
 flake.lib.mkAgentSandbox {
   inherit pkgs system extraModules showBootLogs;
@@ -6,11 +6,26 @@ flake.lib.mkAgentSandbox {
   name = "claude-sandbox";
 
   guestModules = [
-    ./guest-claude.nix
+    {
+      virtualisation.sharedDirectories.claude-config = {
+        source = ''"$AGENT_SANDBOX_CONFIG_DIR"'';
+        target = "/mnt/agent-sandbox/config/claude";
+        securityModel = "none";
+      };
+
+      systemd.tmpfiles.rules = [
+        "d /mnt/agent-sandbox/config 0755 root root -"
+      ];
+    }
   ];
 
   launcherScript = flake.lib.mkHarnessLauncherScript {
-    sessionCommand = "claude-sandbox-session";
+    sessionCommand = guestSystem: import ./session-wrapper.nix {
+      inherit inputs;
+      pkgs = import inputs.nixpkgs { system = guestSystem; };
+      lib = inputs.nixpkgs.lib;
+      agentSandboxShowMarkers = false;
+    };
     extraInit = { emptyDir, ... }: ''
       config_dir="${emptyDir}"
     '';

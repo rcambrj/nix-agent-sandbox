@@ -1,4 +1,4 @@
-{ flake, pkgs, system, extraModules ? [ ], showBootLogs ? false, ... }:
+{ flake, inputs, pkgs, system, extraModules ? [ ], showBootLogs ? false, ... }:
 
 flake.lib.mkAgentSandbox {
   inherit pkgs system extraModules showBootLogs;
@@ -6,11 +6,38 @@ flake.lib.mkAgentSandbox {
   name = "opencode-sandbox";
 
   guestModules = [
-    ./guest-opencode.nix
+    {
+      virtualisation.sharedDirectories.opencode-config = {
+        source = ''"$AGENT_SANDBOX_CONFIG_DIR"'';
+        target = "/mnt/agent-sandbox/config/opencode";
+        securityModel = "none";
+      };
+      virtualisation.sharedDirectories.opencode-data = {
+        source = ''"$AGENT_SANDBOX_DATA_DIR"'';
+        target = "/mnt/agent-sandbox/data/opencode";
+        securityModel = "none";
+      };
+      virtualisation.sharedDirectories.opencode-cache = {
+        source = ''"$AGENT_SANDBOX_CACHE_DIR"'';
+        target = "/mnt/agent-sandbox/cache/opencode";
+        securityModel = "none";
+      };
+
+      systemd.tmpfiles.rules = [
+        "d /mnt/agent-sandbox/config 0755 root root -"
+        "d /mnt/agent-sandbox/data 0755 root root -"
+        "d /mnt/agent-sandbox/cache 0755 root root -"
+      ];
+    }
   ];
 
   launcherScript = flake.lib.mkHarnessLauncherScript {
-    sessionCommand = "opencode-sandbox-session";
+    sessionCommand = guestSystem: import ./session-wrapper.nix {
+      inherit inputs;
+      pkgs = import inputs.nixpkgs { system = guestSystem; };
+      lib = inputs.nixpkgs.lib;
+      agentSandboxShowMarkers = false;
+    };
     extraInit = { emptyDir, ... }: ''
       config_dir="${emptyDir}"
       data_dir="${emptyDir}"

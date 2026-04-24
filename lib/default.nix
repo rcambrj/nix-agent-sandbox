@@ -32,8 +32,10 @@ let
     , extraControl ? (_: "")
     , extraExports ? (_: "")
     }:
-    args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib }:
+    args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, ... }:
     let
+      sessionPkg = sessionCommand guestSystem;
+      sessionExe = lib.getExe sessionPkg;
       initText = extraInit args;
       caseArmsText = extraCaseArms args;
       validationText = extraValidation args;
@@ -194,7 +196,7 @@ let
         -o "LogLevel=quiet" \
         -p "$ssh_port" \
         root@127.0.0.1 \
-        "${sessionCommand}"
+        "${sessionExe}"
       ssh_exit=$?
       set -e
 
@@ -260,7 +262,7 @@ let
       passthru = { inherit emptyDir vmSystem; };
 
       text = launcherScript {
-        inherit name emptyDir vmRunner;
+        inherit name emptyDir vmRunner guestSystem guestPkgs;
         coreutils = pkgs.coreutils;
         openssh = pkgs.openssh;
         nixpkgsLib = inputs.nixpkgs.lib;

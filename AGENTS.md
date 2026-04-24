@@ -10,10 +10,10 @@
 ## Architecture
 - `lib/mkAgentSandbox` — harness-agnostic function that builds a NixOS VM and wraps it in a `writeShellApplication`. Each harness provides its own `guestModules` and `launcherScript`.
 - `lib/mkWrappedAgentSandbox` — generic wrapper that takes a `flags` attrset and produces a shell script that forwards flag arguments to the sandbox package.
-- `lib/guest-vm.nix` — base guest NixOS module (VM settings, SSH, workspace+control mounts, boot config). Harness-specific mounts and session scripts live in each harness's `guest-<name>.nix`.
+- `lib/guest-vm.nix` — base guest NixOS module (VM settings, SSH, workspace+control mounts, boot config). Harness-specific mounts and session setup live in each harness's `guestModules`.
 - Each harness package (`packages/<harness>-sandbox/`) calls `mkAgentSandbox` with:
   - `name` — executable name (e.g., `"opencode-sandbox"`)
-  - `guestModules` — list of NixOS modules for the guest (session script, agent-specific mounts)
+  - `guestModules` — list of NixOS modules for the guest (session setup, agent-specific mounts)
   - `launcherScript` — function returning the host-side launcher script text
 
 ## Rules
