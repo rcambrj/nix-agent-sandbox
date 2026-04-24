@@ -23,7 +23,7 @@ flake.lib.mkAgentSandbox {
     sessionCommand = { guestSystem, ... }: pkgs.writeShellScriptBin "claude-wrapper" ''
       export CLAUDE_CONFIG_DIR=/mnt/agent-sandbox/config/claude
 
-      ${pkgs.lib.getExe inputs.numtide-llm-agents.packages.${guestSystem}.claude-code} $@
+      exec ${pkgs.lib.getExe inputs.numtide-llm-agents.packages.${guestSystem}.claude-code} "$@"
     '';
     extraInit = { emptyDir, ... }: ''
       config_dir="${emptyDir}"
@@ -34,15 +34,14 @@ flake.lib.mkAgentSandbox {
         shift
         ;;
     '';
-    extraValidation = { coreutils, name, ... }: ''
+    extraFinalize = { coreutils, name, ... }: ''
       config_dir="$(${coreutils}/bin/realpath "$config_dir")"
 
       if [ ! -d "$config_dir" ]; then
         printf '${name}: config directory not found: %s\n' "$config_dir" >&2
         exit 1
       fi
-    '';
-    extraExports = _: ''
+
       export AGENT_SANDBOX_CONFIG_DIR="$config_dir"
     '';
   };

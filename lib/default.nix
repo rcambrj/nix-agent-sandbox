@@ -28,18 +28,14 @@ let
     { sessionCommand
     , extraInit ? (_: "")
     , extraCaseArms ? (_: "")
-    , extraValidation ? (_: "")
-    , extraControl ? (_: "")
-    , extraExports ? (_: "")
+    , extraFinalize ? (_: "")
     }:
     args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, guestPkgs, pkgs, ... }:
     let
       sessionCmd = sessionCommand args;
       initText = extraInit args;
       caseArmsText = extraCaseArms args;
-      validationText = extraValidation args;
-      controlText = extraControl args;
-      exportsText = extraExports args;
+      finalizeText = extraFinalize args;
       remoteScript = ''
         set -euo pipefail
 
@@ -119,8 +115,6 @@ let
         exit 1
       fi
 
-      ${validationText}
-
       control_dir="$(${coreutils}/bin/mktemp -d "''${TMPDIR:-/tmp}/${name}.XXXXXX")"
       trap 'rm -rf "$control_dir"' EXIT INT TERM
 
@@ -135,8 +129,6 @@ let
           cat "$f" >> "$control_dir/agent-env"
         done
       fi
-
-      ${controlText}
 
       ssh_port=$(( ($$ + RANDOM) % 40000 + 1024 ))
 
@@ -160,7 +152,7 @@ let
       export AGENT_SANDBOX_WORKSPACE_DIR="$share_path"
       export AGENT_SANDBOX_CONTROL_DIR="$control_dir"
       export AGENT_SANDBOX_CONFIG_DIR="${emptyDir}"
-      ${exportsText}
+      ${finalizeText}
       export NIX_DISK_IMAGE="$control_dir/agent-sandbox.qcow2"
       export QEMU_NET_OPTS="hostfwd=tcp:127.0.0.1:$ssh_port-:22"
 

@@ -44,7 +44,7 @@ flake.lib.mkAgentSandbox {
         export XDG_CACHE_HOME=/mnt/agent-sandbox/cache
       fi
 
-      ${pkgs.lib.getExe inputs.numtide-llm-agents.packages.${guestSystem}.opencode} $@
+      exec ${pkgs.lib.getExe inputs.numtide-llm-agents.packages.${guestSystem}.opencode} "$@"
     '';
     extraInit = { emptyDir, ... }: ''
       config_dir="${emptyDir}"
@@ -69,7 +69,7 @@ flake.lib.mkAgentSandbox {
         shift
         ;;
     '';
-    extraValidation = { coreutils, name, ... }: ''
+    extraFinalize = { coreutils, name, ... }: ''
       config_dir="$(${coreutils}/bin/realpath "$config_dir")"
 
       if [ ! -d "$config_dir" ]; then
@@ -92,8 +92,7 @@ flake.lib.mkAgentSandbox {
           exit 1
         fi
       fi
-    '';
-    extraControl = _: ''
+
       if [ "$has_data_dir" -eq 1 ]; then
         : > "$control_dir/opencode-has-data-dir"
       fi
@@ -101,8 +100,7 @@ flake.lib.mkAgentSandbox {
       if [ "$has_cache_dir" -eq 1 ]; then
         : > "$control_dir/opencode-has-cache-dir"
       fi
-    '';
-    extraExports = _: ''
+
       export AGENT_SANDBOX_CONFIG_DIR="$config_dir"
       export AGENT_SANDBOX_DATA_DIR="$data_dir"
       export AGENT_SANDBOX_CACHE_DIR="$cache_dir"
