@@ -32,8 +32,7 @@ flake.lib.mkAgentSandbox {
   ];
 
   launcherScript = flake.lib.mkHarnessLauncherScript {
-    sessionCommand = guestSystem: inputs.numtide-llm-agents.packages.${guestSystem}.opencode;
-    sessionPrelude = { ... }: ''
+    sessionCommand = { guestSystem, pkgs, ... }: pkgs.writeShellScriptBin "opencode-wrapper" ''
       export OPENCODE_DB=:memory:
       export XDG_CONFIG_HOME=/mnt/agent-sandbox/config
 
@@ -44,16 +43,8 @@ flake.lib.mkAgentSandbox {
       if [ -r /mnt/agent-sandbox/control/opencode-has-cache-dir ]; then
         export XDG_CACHE_HOME=/mnt/agent-sandbox/cache
       fi
-    '';
-    sessionLogLines = { ... }: ''
-      printf 'OPENCODE_DB=%s\n' "$OPENCODE_DB"
-      printf 'XDG_CONFIG_HOME=%s\n' "$XDG_CONFIG_HOME"
-      if [ -n "''${XDG_DATA_HOME:-}" ]; then
-        printf 'XDG_DATA_HOME=%s\n' "$XDG_DATA_HOME"
-      fi
-      if [ -n "''${XDG_CACHE_HOME:-}" ]; then
-        printf 'XDG_CACHE_HOME=%s\n' "$XDG_CACHE_HOME"
-      fi
+
+      ${pkgs.lib.getExe inputs.numtide-llm-agents.packages.${guestSystem}.opencode} $@
     '';
     extraInit = { emptyDir, ... }: ''
       config_dir="${emptyDir}"

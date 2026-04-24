@@ -26,8 +26,6 @@ let
 
   mkHarnessLauncherScript =
     { sessionCommand
-    , sessionPrelude ? (_: "")
-    , sessionLogLines ? (_: "")
     , extraInit ? (_: "")
     , extraCaseArms ? (_: "")
     , extraValidation ? (_: "")
@@ -36,10 +34,7 @@ let
     }:
     args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, guestPkgs, pkgs, ... }:
     let
-      sessionPkg = sessionCommand guestSystem;
-      sessionExe = lib.getExe sessionPkg;
-      sessionPreludeText = sessionPrelude args;
-      sessionLogLinesText = sessionLogLines args;
+      sessionCmd = sessionCommand args;
       initText = extraInit args;
       caseArmsText = extraCaseArms args;
       validationText = extraValidation args;
@@ -64,20 +59,8 @@ let
           mapfile -t args < /mnt/agent-sandbox/control/agent-args
         fi
 
-        ${sessionPreludeText}
-
-        command=( ${sessionExe} "''${args[@]}" )
-        printf -v command_line '%q ' "''${command[@]}"
-        command_line="''${command_line% }"
-
-        {
-          printf 'cwd=%s\n' "$PWD"
-          printf 'command=%s\n' "$command_line"
-          ${sessionLogLinesText}
-        } | ${guestPkgs.systemd}/bin/systemd-cat -t ${name}
-
         set +e
-        ${guestPkgs.bashInteractive}/bin/bash -c ${lib.escapeShellArg "${sessionExe} \"\$@\""} bash "''${args[@]}"
+        ${guestPkgs.bashInteractive}/bin/bash -c ${lib.escapeShellArg "${lib.getExe sessionCmd} \"\$@\""} bash "''${args[@]}"
         rc=$?
         set -e
 
