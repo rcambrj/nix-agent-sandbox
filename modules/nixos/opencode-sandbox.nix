@@ -58,7 +58,7 @@ in
         locking and shared-memory behavior SQLite expects, so the sandbox defaults OPENCODE_DB to :memory:.
 
         If you want database-backed persistence anyway, you can opt in via env file with a SQLite URI such as
-        `OPENCODE_DB=file:/mnt/opencode-sandbox/data/opencode.db?vfs=unix-excl`.
+        `OPENCODE_DB=file:/mnt/agent-sandbox/data/opencode.db?vfs=unix-excl`.
 
         Warning: `vfs=unix-excl` avoids the shared-memory WAL path, but it is only appropriate when exactly one
         sandbox instance uses that database path at a time. Concurrent instances pointed at the same database can
@@ -86,16 +86,19 @@ in
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [
-      (flake.lib.mkWrappedOpencodeSandbox {
+      (flake.lib.mkWrappedAgentSandbox {
         inherit pkgs;
+        name = "opencode-sandbox";
         package = if cfg.package != null then cfg.package else pkg.override {
           extraModules = cfg.extraModules;
           showBootLogs = cfg.showBootLogs;
         };
-        envFile = cfg.envFile;
-        configDir = cfg.configDir;
-        dataDir = cfg.dataDir;
-        cacheDir = cfg.cacheDir;
+        flags = {
+          env-file = cfg.envFile;
+          config-dir = cfg.configDir;
+          data-dir = cfg.dataDir;
+          cache-dir = cfg.cacheDir;
+        };
       })
     ];
   };

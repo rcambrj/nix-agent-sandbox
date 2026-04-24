@@ -4,7 +4,7 @@ let
   launcherTest = pkgs.callPackage ./launcher.nix args;
   moduleTest = pkgs.callPackage ./module.nix args;
 in
-pkgs.linkFarm "opencode-sandbox-test" [
+pkgs.linkFarm "nix-agent-sandbox-test" [
   {
     name = "launcher";
     path = launcherTest;

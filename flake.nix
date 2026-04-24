@@ -1,5 +1,5 @@
 {
-  description = "Simple flake with a devshell";
+  description = "Nix-based sandbox for AI coding agents";
 
   nixConfig = {
     extra-substituters = [

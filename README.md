@@ -1,17 +1,24 @@
-# opencode-sandbox
+# nix-agent-sandbox
 
-Run `opencode` inside an ephemeral VM, with optional host-backed config, data, and cache directories.
+Run AI coding agents inside ephemeral NixOS VMs, with optional host-backed config, data, and cache directories.
+
+Currently supported agents:
+- **opencode** — `opencode-sandbox`
+- **claude** — `claude-sandbox`
 
 Requires `nix`. Don't have it? [Install nix](https://github.com/DeterminateSystems/nix-installer#install-determinate-nix) now.
 
 ## Quick start
 
 ```sh
-# Run it directly from this flake:
-nix run github:rcambrj/opencode-sandbox#opencode-sandbox
+# Run opencode in a sandbox:
+nix run github:rcambrj/nix-agent-sandbox#opencode-sandbox
 
-# Or clone this repository and run it
-nix run .#opencode-sandbox
+# Run claude in a sandbox:
+nix run github:rcambrj/nix-agent-sandbox#claude-sandbox
+
+# Run the test agent (echo agent for verification):
+nix run github:rcambrj/nix-agent-sandbox#mock-sandbox
 
 # Pass sandbox args after one `--`:
 nix run .#opencode-sandbox -- ~/projects/my-project \
@@ -19,12 +26,12 @@ nix run .#opencode-sandbox -- ~/projects/my-project \
   --cache-dir=./cache \
   --config-dir=./config
 
-# Pass `opencode` arguments after *another* `--`:
+# Pass agent arguments after *another* `--`:
 nix run .#opencode-sandbox -- -- --help
 nix run .#opencode-sandbox -- /projects/my-project -- models
 
 # Inside the VM, the project is mounted at /workspace.
-# Don't pass the host path through to opencode:
+# Don't pass the host path through to the agent:
 nix run .#opencode-sandbox -- -- /projects/my-project
 ```
 
@@ -34,16 +41,16 @@ Add this repository to your flake inputs:
 
 ```nix
 {
-  inputs.opencode-sandbox.url = "github:rcambrj/opencode-sandbox";
+  inputs.nix-agent-sandbox.url = "github:rcambrj/nix-agent-sandbox";
 }
 ```
 
-Import the NixOS module into your system configuration and enable it:
+### opencode-sandbox
 
 ```nix
 {
   imports = [
-    inputs.opencode-sandbox.nixosModules.opencode-sandbox
+    inputs.nix-agent-sandbox.nixosModules.opencode-sandbox
   ];
 
   programs.opencode-sandbox = {
@@ -51,62 +58,37 @@ Import the NixOS module into your system configuration and enable it:
 
     envFile = pkgs.writeText "opencode-sandbox-env" (lib.generators.toKeyValue { } {
       OPENCODE_ENABLE_EXA = 1;
-
-      # OPENCODE_API_KEY = "your-opencode-go-key";
-      # OPENAI_API_KEY = "your-openai-key";
-      # ZHIPU_API_KEY = "your-zai-coding-plan-key";
-      #
-      # This seems limited, put auth.json in dataDir instead
-      # Get the contents from ~/.local/share/opencode/auth.json
-      #
-      # Also, don't put secrets into the nix store
-      # Use sops-nix or agenix (with agenix-template) instead
     });
 
     configDir = let
       opencode-json = pkgs.writeText "opencode.json" (builtins.toJSON {
         "$schema" = "https://opencode.ai/config.json";
         autoupdate = false;
-        permission = {
-          # sandboxed as root, go wild
-          "*" = "allow";
-        };
+        permission = { "*" = "allow"; };
         default_agent = "plan";
 
-        # provider/model examples
         provider = {
           opencode-go.models."qwen3.5-plus" = {};
           openai.models."gpt-5.4" = {};
           zai-coding-plan.model."glm-5.1" = {};
           ollama = {
-            # Ollama is expected to run outside the sandbox VM.
-            # Set `baseURL` to an endpoint reachable from inside the guest.
-            # When Ollama is exposed on the VM's host, the QEMU default gateway is `10.0.2.2`:
             options.baseURL = "http://10.0.2.2:11434/v1";
             models."llama3.1" = {};
           };
         };
-
       });
     in pkgs.runCommand "opencode-sandbox-config" {} ''
       mkdir -p "$out"
       cp ${opencode-json} "$out/opencode.json"
-
-      # put other files in $out/, like AGENTS.md & plugin configuration
     '';
 
-    # optional
     dataDir = /persist/opencode/data;
     cacheDir = /persist/opencode/cache;
     showBootLogs = false;
     extraModules = [
-      # Plain attrset module
       {
-        # for `opencode-sandbox -- serve --hostname 0.0.0.0 --port 4096`
         networking.firewall.allowedTCPPorts = [ 4096 ];
       }
-
-      # Function that receives the guest system's pkgs
       (pkgs: {
         environment.systemPackages = [ pkgs.hello ];
       })
@@ -115,31 +97,39 @@ Import the NixOS module into your system configuration and enable it:
 }
 ```
 
-This installs `opencode-sandbox` into the system profile.
+### claude-sandbox
 
-```sh
-# Now run it with
-opencode-sandbox
+```nix
+{
+  imports = [
+    inputs.nix-agent-sandbox.nixosModules.claude-sandbox
+  ];
 
-# Pass sandbox args before `--`:
-opencode-sandbox ~/projects/my-project \
-  --data-dir=./data \
-  --cache-dir=./cache \
-  --config-dir=./config
+  programs.claude-sandbox = {
+    enable = true;
 
-# Pass `opencode` arguments after `--`:
-opencode-sandbox -- --help
-opencode-sandbox /projects/my-project -- models
+    envFile = pkgs.writeText "claude-sandbox-env" (lib.generators.toKeyValue { } {
+      ANTHROPIC_API_KEY = "your-key";
+    });
 
-# Inside the VM, the project is mounted at /workspace.
-# Don't pass the host path through to opencode:
-opencode-sandbox -- /projects/my-project
+    configDir = pkgs.runCommand "claude-sandbox-config" {} ''
+      mkdir -p "$out"
+      cat > "$out/settings.json" << 'EOF'
+      {
+        "permissions": { "allow": ["*"] }
+      }
+      EOF
+    '';
+
+    showBootLogs = false;
+  };
+}
 ```
 
 ## Notes
 
 > [!NOTE]
-> The `OPENCODE_DB` environment variable is hardcoded to `:memory:` so that opencode doesn't create an sqlite database on disk. This is because the sqlite database is stored on the `dataDir` mount via a QEMU 9p share. Unfortunately QEMU's 9p doesn't handle sqlite database locks (at all) so having multiple instances of opencode-sandbox running would likely result in a corrupted sqlite database very quickly.
+> The `OPENCODE_DB` environment variable is hardcoded to `:memory:` in the opencode guest module so that opencode doesn't create an sqlite database on disk. This is because the sqlite database is stored on the `dataDir` mount via a QEMU 9p share. Unfortunately QEMU's 9p doesn't handle sqlite database locks (at all) so having multiple instances of opencode-sandbox running would likely result in a corrupted sqlite database very quickly.
 >
 > The opencode team have said that [they will not support other databases](https://github.com/anomalyco/opencode/issues/7840#issuecomment-3901180429).
 >

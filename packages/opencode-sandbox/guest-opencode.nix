@@ -1,33 +1,35 @@
-{ lib, opencodeSandboxShowMarkers ? false, opencode, pkgs, ... }:
+{ inputs, lib, agentSandboxShowMarkers ? false, pkgs, ... }:
 
 let
+  opencode = inputs.numtide-llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.opencode;
+
   session = pkgs.writeShellScriptBin "opencode-sandbox-session" ''
     set -euo pipefail
 
     export HOME=/root
     export SHELL=${pkgs.bashInteractive}/bin/bash
     export OPENCODE_DB=:memory:
-    export XDG_CONFIG_HOME=/mnt/opencode-sandbox/config
+    export XDG_CONFIG_HOME=/mnt/agent-sandbox/config
 
-    if [ -r /mnt/opencode-sandbox/control/opencode-has-data-dir ]; then
-      export XDG_DATA_HOME=/mnt/opencode-sandbox/data
+    if [ -r /mnt/agent-sandbox/control/opencode-has-data-dir ]; then
+      export XDG_DATA_HOME=/mnt/agent-sandbox/data
     fi
 
-    if [ -r /mnt/opencode-sandbox/control/opencode-has-cache-dir ]; then
-      export XDG_CACHE_HOME=/mnt/opencode-sandbox/cache
+    if [ -r /mnt/agent-sandbox/control/opencode-has-cache-dir ]; then
+      export XDG_CACHE_HOME=/mnt/agent-sandbox/cache
     fi
 
     cd /workspace
 
-    if [ -r /mnt/opencode-sandbox/control/opencode-env ]; then
+    if [ -r /mnt/agent-sandbox/control/agent-env ]; then
       set -a
-      source /mnt/opencode-sandbox/control/opencode-env
+      source /mnt/agent-sandbox/control/agent-env
       set +a
     fi
 
     declare -a args=()
-    if [ -r /mnt/opencode-sandbox/control/opencode-args ]; then
-      mapfile -t args < /mnt/opencode-sandbox/control/opencode-args
+    if [ -r /mnt/agent-sandbox/control/agent-args ]; then
+      mapfile -t args < /mnt/agent-sandbox/control/agent-args
     fi
 
     command=( ${lib.getExe opencode} "''${args[@]}" )
@@ -50,7 +52,7 @@ let
       fi
     } | ${pkgs.systemd}/bin/systemd-cat -t opencode-sandbox-session
 
-    ${lib.optionalString opencodeSandboxShowMarkers ''
+    ${lib.optionalString agentSandboxShowMarkers ''
       printf '\n=== Starting opencode in /workspace ===\n'
       printf '=== opencode args: %s ===\n\n' "''${args[*]:-(interactive)}"
     ''}
@@ -60,7 +62,7 @@ let
     rc=$?
     set -e
 
-    ${lib.optionalString opencodeSandboxShowMarkers ''
+    ${lib.optionalString agentSandboxShowMarkers ''
       printf '\n=== opencode exit code: %s ===\n' "$rc"
     ''}
     (
@@ -71,5 +73,29 @@ let
   '';
 in
 {
+  imports = [ ];
+
+  virtualisation.sharedDirectories.opencode-config = {
+    source = ''"$AGENT_SANDBOX_CONFIG_DIR"'';
+    target = "/mnt/agent-sandbox/config/opencode";
+    securityModel = "none";
+  };
+  virtualisation.sharedDirectories.opencode-data = {
+    source = ''"$AGENT_SANDBOX_DATA_DIR"'';
+    target = "/mnt/agent-sandbox/data/opencode";
+    securityModel = "none";
+  };
+  virtualisation.sharedDirectories.opencode-cache = {
+    source = ''"$AGENT_SANDBOX_CACHE_DIR"'';
+    target = "/mnt/agent-sandbox/cache/opencode";
+    securityModel = "none";
+  };
+
+  systemd.tmpfiles.rules = [
+    "d /mnt/agent-sandbox/config 0755 root root -"
+    "d /mnt/agent-sandbox/data 0755 root root -"
+    "d /mnt/agent-sandbox/cache 0755 root root -"
+  ];
+
   environment.systemPackages = [ opencode session ];
 }

@@ -2,9 +2,16 @@
 
 let
   hostPkgs = pkgs;
-  hostSystem = hostPkgs.stdenv.hostPlatform.system;
 
-  mockPackage = pkgs.writeShellScriptBin "opencode-sandbox" ''
+  mockOpencodePackage = pkgs.writeShellScriptBin "opencode-sandbox" ''
+    echo "ARGS_START"
+    for arg in "$@"; do
+      echo "ARG: $arg"
+    done
+    echo "ARGS_END"
+  '';
+
+  mockClaudePackage = pkgs.writeShellScriptBin "claude-sandbox" ''
     echo "ARGS_START"
     for arg in "$@"; do
       echo "ARG: $arg"
@@ -13,7 +20,7 @@ let
   '';
 in
 hostPkgs.testers.runNixOSTest {
-  name = "opencode-sandbox-module";
+  name = "nix-agent-sandbox-module";
 
   nodes.machine = { config, ... }: {
     imports = [
@@ -22,7 +29,7 @@ hostPkgs.testers.runNixOSTest {
 
     programs.opencode-sandbox = {
       enable = true;
-      package = mockPackage;
+      package = mockOpencodePackage;
       configDir = pkgs.writeTextDir "opencode.json" (builtins.toJSON {
         "$schema" = "https://opencode.ai/config.json";
       });
@@ -36,7 +43,7 @@ hostPkgs.testers.runNixOSTest {
 
     programs.opencode-sandbox = {
       enable = true;
-      package = mockPackage;
+      package = mockOpencodePackage;
       configDir = pkgs.writeTextDir "opencode.json" (builtins.toJSON {
         "$schema" = "https://opencode.ai/config.json";
       });
@@ -52,7 +59,7 @@ hostPkgs.testers.runNixOSTest {
 
     programs.opencode-sandbox = {
       enable = true;
-      package = mockPackage;
+      package = mockOpencodePackage;
       configDir = pkgs.writeTextDir "opencode.json" (builtins.toJSON {
         "$schema" = "https://opencode.ai/config.json";
       });
@@ -60,11 +67,34 @@ hostPkgs.testers.runNixOSTest {
     };
   };
 
-  testScript = ''
-    def run_opencode_sandbox(machine, *args):
-        result = machine.succeed("opencode-sandbox " + " ".join(args))
-        return result
+  nodes.machineClaude = { config, ... }: {
+    imports = [
+      flake.nixosModules.claude-sandbox
+    ];
 
+    programs.claude-sandbox = {
+      enable = true;
+      package = mockClaudePackage;
+      configDir = pkgs.writeTextDir "settings.json" (builtins.toJSON {
+        permissions = { allow = ["*"]; };
+      });
+    };
+  };
+
+  nodes.machineClaudeWithEnv = { config, ... }: {
+    imports = [
+      flake.nixosModules.claude-sandbox
+    ];
+
+    programs.claude-sandbox = {
+      enable = true;
+      package = mockClaudePackage;
+      configDir = pkgs.writeTextDir "settings.json" "{}";
+      envFile = pkgs.writeText "claude-env" "CLAUDE_TEST=1";
+    };
+  };
+
+  testScript = ''
     def parse_args(output):
         lines = output.strip().split("\n")
         args = []
@@ -80,37 +110,55 @@ hostPkgs.testers.runNixOSTest {
                 args.append(line[5:])
         return args
 
+    # --- OpenCode sandbox module tests ---
+
     machine.wait_for_unit("multi-user.target")
 
-    out = run_opencode_sandbox(machine, "--", "test")
+    out = machine.succeed("opencode-sandbox -- test")
     args = parse_args(out)
     assert any(arg.startswith("--config-dir=") for arg in args), f"expected --config-dir= arg, got: {args!r}"
     assert "opencode.json" in str(args), f"expected config dir to contain opencode.json, got: {args!r}"
 
-    out = run_opencode_sandbox(machine, "--", "test")
+    out = machine.succeed("opencode-sandbox -- test")
     args = parse_args(out)
     assert not any(arg.startswith("--data-dir=") for arg in args), f"expected no --data-dir= when not configured, got: {args!r}"
     assert not any(arg.startswith("--cache-dir=") for arg in args), f"expected no --cache-dir= when not configured, got: {args!r}"
 
     machineWithDirs.wait_for_unit("multi-user.target")
 
-    out = run_opencode_sandbox(machineWithDirs, "--", "test")
+    out = machineWithDirs.succeed("opencode-sandbox -- test")
     args = parse_args(out)
     assert any(arg.startswith("--data-dir=") for arg in args), f"expected --data-dir= when configured, got: {args!r}"
     assert any(arg.startswith("--cache-dir=") for arg in args), f"expected --cache-dir= when configured, got: {args!r}"
 
     machineCustomEnv.wait_for_unit("multi-user.target")
 
-    out = run_opencode_sandbox(machineCustomEnv, "--", "test")
+    out = machineCustomEnv.succeed("opencode-sandbox -- test")
     args = parse_args(out)
     assert any(arg.startswith("--env-file=") for arg in args), f"expected --env-file= when configured, got: {args!r}"
 
-    out = run_opencode_sandbox(machine, "--", "models")
+    out = machine.succeed("opencode-sandbox -- models")
     args = parse_args(out)
     assert "models" in args, f"expected 'models' arg after -- to be forwarded, got: {args!r}"
 
-    out = run_opencode_sandbox(machine, "--", "serve", "--hostname", "0.0.0.0")
+    out = machine.succeed("opencode-sandbox -- serve --hostname 0.0.0.0")
     args = parse_args(out)
     assert "serve" in args and "--hostname" in args and "0.0.0.0" in args, f"expected multiple args after -- to be forwarded, got: {args!r}"
+
+    # --- Claude sandbox module tests ---
+
+    machineClaude.wait_for_unit("multi-user.target")
+
+    out = machineClaude.succeed("claude-sandbox -- test")
+    args = parse_args(out)
+    assert any(arg.startswith("--config-dir=") for arg in args), f"expected --config-dir= arg, got: {args!r}"
+    assert "settings.json" in str(args), f"expected config dir to contain settings.json, got: {args!r}"
+    assert not any(arg.startswith("--env-file=") for arg in args), f"expected no --env-file= when not configured, got: {args!r}"
+
+    machineClaudeWithEnv.wait_for_unit("multi-user.target")
+
+    out = machineClaudeWithEnv.succeed("claude-sandbox -- test")
+    args = parse_args(out)
+    assert any(arg.startswith("--env-file=") for arg in args), f"expected --env-file= when configured, got: {args!r}"
   '';
 }

@@ -3,22 +3,90 @@
 let
   hostPkgs = pkgs;
   hostSystem = hostPkgs.stdenv.hostPlatform.system;
-  launcher = hostPkgs.lib.getExe flake.packages.${hostSystem}.opencode-sandbox;
+
+  genericLauncher = hostPkgs.lib.getExe flake.packages.${hostSystem}.mock-sandbox;
+  opencodeLauncher = hostPkgs.lib.getExe flake.packages.${hostSystem}.opencode-sandbox;
 in
 hostPkgs.testers.runNixOSTest {
-  name = "opencode-sandbox-launcher";
+  name = "nix-agent-sandbox-launcher";
 
   nodes = {};
 
   testScript = ''
-    import glob
     import os
     import json
     import shutil
     import subprocess
     import tempfile
 
-    launcher = ${builtins.toJSON launcher}
+    generic_launcher = ${builtins.toJSON genericLauncher}
+    opencode_launcher = ${builtins.toJSON opencodeLauncher}
+
+    # --- Generic mock-sandbox tests ---
+
+    def run_generic(*args, env_file_arg=None):
+        cmd = [generic_launcher]
+        if env_file_arg is not None:
+            cmd += [f"--env-file={env_file_arg}"]
+        cmd += list(args)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            raise Exception(f"exit {result.returncode}: {result.stdout}")
+        return result.stdout
+
+    def run_generic_fail(*args, env_file_arg=None):
+        cmd = [generic_launcher]
+        if env_file_arg is not None:
+            cmd += [f"--env-file={env_file_arg}"]
+        cmd += list(args)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            raise Exception(f"expected failure, got success: {result.stdout}")
+        return result.stdout
+
+    env_dir = tempfile.mkdtemp(prefix="mock-sandbox-test-env-")
+    env_file = os.path.join(env_dir, "env")
+    with open(env_file, "w") as f:
+        f.write("TEST_AGENT_ENV_VAR=hello-from-env\n")
+
+    out = run_generic("--", "hello", "world")
+    assert "TEST_AGENT_ARGS_START" in out, f"expected args start marker, got: {out!r}"
+    assert "ARG: hello" in out, f"expected 'ARG: hello' in output, got: {out!r}"
+    assert "ARG: world" in out, f"expected 'ARG: world' in output, got: {out!r}"
+    assert "TEST_AGENT_ARGS_END" in out, f"expected args end marker, got: {out!r}"
+
+    out = run_generic("--", "hello", "world", env_file_arg=env_file)
+    assert "TEST_AGENT_ENV_VAR=hello-from-env" in out, f"expected env var in output, got: {out!r}"
+
+    out = run_generic_fail("hello", "extra")
+    assert "unexpected launcher argument before --" in out, f"expected strict launcher failure, got: {out!r}"
+
+    out = run_generic_fail("--bogus", "--", "hello")
+    assert "unknown launcher flag before --" in out, f"expected unknown launcher flag failure, got: {out!r}"
+
+    tmpdir = tempfile.mkdtemp(prefix="mock-sandbox-share-")
+    try:
+        out = run_generic(tmpdir, "--", "in-custom-dir")
+        assert "ARG: in-custom-dir" in out, f"expected arg in custom dir, got: {out!r}"
+    finally:
+        os.rmdir(tmpdir)
+
+    os.remove(env_file)
+    os.rmdir(env_dir)
+
+    # --- OpenCode sandbox tests ---
 
     env_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-env-")
     env_file = os.path.join(env_dir, "env")
@@ -27,8 +95,8 @@ hostPkgs.testers.runNixOSTest {
 
     config_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-config-")
 
-    def run(*args, env_file_arg=env_file, config_dir_arg=config_dir, data_dir_arg=None, cache_dir_arg=None):
-        cmd = [launcher]
+    def run_opencode(*args, env_file_arg=env_file, config_dir_arg=config_dir, data_dir_arg=None, cache_dir_arg=None):
+        cmd = [opencode_launcher]
         if env_file_arg is not None:
             cmd += [f"--env-file={env_file_arg}"]
         if config_dir_arg is not None:
@@ -49,8 +117,8 @@ hostPkgs.testers.runNixOSTest {
             raise Exception(f"exit {result.returncode}: {result.stdout}")
         return result.stdout
 
-    def run_fail(*args, env_file_arg=env_file, config_dir_arg=config_dir, data_dir_arg=None, cache_dir_arg=None):
-        cmd = [launcher]
+    def run_opencode_fail(*args, env_file_arg=env_file, config_dir_arg=config_dir, data_dir_arg=None, cache_dir_arg=None):
+        cmd = [opencode_launcher]
         if env_file_arg is not None:
             cmd += [f"--env-file={env_file_arg}"]
         if config_dir_arg is not None:
@@ -71,17 +139,17 @@ hostPkgs.testers.runNixOSTest {
             raise Exception(f"expected failure, got success: {result.stdout}")
         return result.stdout
 
-    out = run("--", "models")
+    out = run_opencode("--", "models")
     assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
     assert "opencode/" in out, f"expected 'opencode/' in output, got: {out!r}"
 
-    out = run_fail("models", "extra")
+    out = run_opencode_fail("models", "extra")
     assert "unexpected launcher argument before --" in out, f"expected strict launcher failure, got: {out!r}"
 
-    out = run_fail("--bogus", "--", "models")
+    out = run_opencode_fail("--bogus", "--", "models")
     assert "unknown launcher flag before --" in out, f"expected unknown launcher flag failure, got: {out!r}"
 
-    out = run("--", "--help")
+    out = run_opencode("--", "--help")
     assert "Options:" in out and "show help" in out
 
     mock_provider_config = {
@@ -97,13 +165,13 @@ hostPkgs.testers.runNixOSTest {
     with open(os.path.join(config_dir, "opencode.json"), "w") as f:
         json.dump(mock_provider_config, f)
 
-    out = run(f"--config-dir={config_dir}", "--", "models")
+    out = run_opencode(f"--config-dir={config_dir}", "--", "models")
     assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
     assert "mock/mock-model" in out, f"expected custom config model in output, got: {out!r}"
 
     tmpdir = tempfile.mkdtemp(prefix="opencode-sandbox-share-")
     try:
-        out = run(tmpdir, f"--config-dir={config_dir}", "--", "--help")
+        out = run_opencode(tmpdir, f"--config-dir={config_dir}", "--", "--help")
         assert "Options:" in out and "show help" in out
     finally:
         os.rmdir(tmpdir)
@@ -111,9 +179,10 @@ hostPkgs.testers.runNixOSTest {
     data_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-data-")
     cache_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-cache-")
     try:
-        out = run("--", "models", data_dir_arg=data_dir, cache_dir_arg=cache_dir)
+        out = run_opencode("--", "models", data_dir_arg=data_dir, cache_dir_arg=cache_dir)
         assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
         assert os.path.isdir(os.path.join(data_dir, "log")), "expected XDG data log directory to be created"
+        import glob
         assert not glob.glob(os.path.join(data_dir, "opencode-*.db")), "expected no persistent DB files matching opencode-*.db when OPENCODE_DB=:memory:"
         assert os.path.isfile(os.path.join(cache_dir, "version")), "expected XDG cache version file to be created"
 
@@ -123,7 +192,7 @@ hostPkgs.testers.runNixOSTest {
         combined_data_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-combined-data-")
         combined_cache_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-combined-cache-")
         try:
-            out = run(
+            out = run_opencode(
                 f"--config-dir={combined_config_dir}",
                 "--",
                 "models",
