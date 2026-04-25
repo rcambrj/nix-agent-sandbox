@@ -24,17 +24,28 @@ let
         throw "extraModules entries must be attrsets, functions, or paths, got: ${builtins.typeOf entry}"
     ) modules;
 
+  renderExtraFlags = extraFlags:
+    lib.concatStringsSep "\n" (lib.mapAttrsToList (flagName: flagSpec:
+      if builtins.isString flagSpec then
+        ''
+          --${flagName}=*)
+            ${flagSpec}="''${1#--${flagName}=}"
+            shift
+            ;;
+        ''
+      else
+        throw "extraFlags.${flagName} must be a string"
+    ) extraFlags);
+
   mkHarnessLauncherScript =
     { sessionCommand
-    , extraInit ? (_: "")
-    , extraCaseArms ? (_: "")
+    , extraFlags ? { }
     , extraFinalize ? (_: "")
     }:
     args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, guestPkgs, pkgs, ... }:
     let
       sessionCmd = sessionCommand args;
-      initText = extraInit args;
-      caseArmsText = extraCaseArms args;
+      caseArmsText = renderExtraFlags extraFlags;
       finalizeText = extraFinalize args;
       remoteScript = ''
         set -euo pipefail
@@ -77,8 +88,6 @@ let
       env_files=()
       agent_args=()
       saw_share_path=0
-
-      ${initText}
 
       while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -165,7 +174,7 @@ let
 
       echo '${name}: starting VM, waiting for SSH...' >&2
 
-      max_attempts=120
+      max_attempts=15
       attempt=0
       while [ $attempt -lt $max_attempts ]; do
         if ${openssh}/bin/ssh \
@@ -177,7 +186,7 @@ let
           -o "IdentitiesOnly=yes" \
           -o "PreferredAuthentications=publickey" \
           -o "BatchMode=yes" \
-          -o "ConnectTimeout=2" \
+          -o "ConnectTimeout=1" \
           -o "LogLevel=error" \
           -p "$ssh_port" \
           root@127.0.0.1 \

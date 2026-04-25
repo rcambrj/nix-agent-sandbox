@@ -25,16 +25,11 @@ flake.lib.mkAgentSandbox {
 
       exec ${pkgs.lib.getExe inputs.numtide-llm-agents.packages.${guestSystem}.claude-code} "$@"
     '';
-    extraInit = { emptyDir, ... }: ''
-      config_dir="${emptyDir}"
-    '';
-    extraCaseArms = _: ''
-      --config-dir=*)
-        config_dir="''${1#--config-dir=}"
-        shift
-        ;;
-    '';
-    extraFinalize = { coreutils, name, ... }: ''
+    extraFlags = {
+      config-dir = "config_dir";
+    };
+    extraFinalize = { coreutils, name, emptyDir, ... }: ''
+      config_dir="''${config_dir-${emptyDir}}"
       config_dir="$(${coreutils}/bin/realpath "$config_dir")"
 
       if [ ! -d "$config_dir" ]; then
