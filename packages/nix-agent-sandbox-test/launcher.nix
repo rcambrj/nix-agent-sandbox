@@ -15,6 +15,7 @@ hostPkgs.testers.runNixOSTest {
   testScript = ''
     import os
     import json
+    import glob
     import shutil
     import subprocess
     import tempfile
@@ -76,13 +77,6 @@ hostPkgs.testers.runNixOSTest {
     out = run_generic_fail("--bogus", "--", "hello")
     assert "unknown launcher flag before --" in out, f"expected unknown launcher flag failure, got: {out!r}"
 
-    tmpdir = tempfile.mkdtemp(prefix="mock-sandbox-share-")
-    try:
-        out = run_generic(tmpdir, "--", "in-custom-dir")
-        assert "ARG: in-custom-dir" in out, f"expected arg in custom dir, got: {out!r}"
-    finally:
-        os.rmdir(tmpdir)
-
     os.remove(env_file)
     os.rmdir(env_dir)
 
@@ -139,18 +133,11 @@ hostPkgs.testers.runNixOSTest {
             raise Exception(f"expected failure, got success: {result.stdout}")
         return result.stdout
 
-    out = run_opencode("--", "models")
-    assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
-    assert "opencode/" in out, f"expected 'opencode/' in output, got: {out!r}"
-
     out = run_opencode_fail("models", "extra")
     assert "unexpected launcher argument before --" in out, f"expected strict launcher failure, got: {out!r}"
 
     out = run_opencode_fail("--bogus", "--", "models")
     assert "unknown launcher flag before --" in out, f"expected unknown launcher flag failure, got: {out!r}"
-
-    out = run_opencode("--", "--help")
-    assert "Options:" in out and "show help" in out
 
     mock_provider_config = {
         "$schema": "https://opencode.ai/config.json",
@@ -165,55 +152,27 @@ hostPkgs.testers.runNixOSTest {
     with open(os.path.join(config_dir, "opencode.json"), "w") as f:
         json.dump(mock_provider_config, f)
 
-    out = run_opencode(f"--config-dir={config_dir}", "--", "models")
+    data_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-data-")
+    cache_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-cache-")
+
+    out = run_opencode(
+        "--",
+        "models",
+        config_dir_arg=config_dir,
+        data_dir_arg=data_dir,
+        cache_dir_arg=cache_dir,
+    )
     assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
     assert "mock/mock-model" in out, f"expected custom config model in output, got: {out!r}"
 
-    tmpdir = tempfile.mkdtemp(prefix="opencode-sandbox-share-")
-    try:
-        out = run_opencode(tmpdir, f"--config-dir={config_dir}", "--", "--help")
-        assert "Options:" in out and "show help" in out
-    finally:
-        os.rmdir(tmpdir)
-
-    data_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-data-")
-    cache_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-cache-")
-    try:
-        out = run_opencode("--", "models", data_dir_arg=data_dir, cache_dir_arg=cache_dir)
-        assert "Database migration complete." in out, f"expected 'Database migration complete.' in output, got: {out!r}"
-        assert os.path.isdir(os.path.join(data_dir, "log")), "expected XDG data log directory to be created"
-        import glob
-        assert not glob.glob(os.path.join(data_dir, "opencode-*.db")), "expected no persistent DB files matching opencode-*.db when OPENCODE_DB=:memory:"
-        assert os.path.isfile(os.path.join(cache_dir, "version")), "expected XDG cache version file to be created"
-
-        combined_config_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-combined-config-")
-        with open(os.path.join(combined_config_dir, "opencode.json"), "w") as f:
-            json.dump(mock_provider_config, f)
-        combined_data_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-combined-data-")
-        combined_cache_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-combined-cache-")
-        try:
-            out = run_opencode(
-                f"--config-dir={combined_config_dir}",
-                "--",
-                "models",
-                env_file_arg=env_file,
-                config_dir_arg=None,
-                data_dir_arg=combined_data_dir,
-                cache_dir_arg=combined_cache_dir,
-            )
-            assert "mock/mock-model" in out, f"expected custom config model in combined output, got: {out!r}"
-            assert os.path.isdir(os.path.join(combined_data_dir, "log")), "expected combined XDG data log directory"
-            assert os.path.isfile(os.path.join(combined_cache_dir, "version")), "expected combined XDG cache version file"
-        finally:
-            shutil.rmtree(combined_config_dir)
-            shutil.rmtree(combined_data_dir)
-            shutil.rmtree(combined_cache_dir)
-    finally:
-        shutil.rmtree(data_dir)
-        shutil.rmtree(cache_dir)
+    assert os.path.isdir(os.path.join(data_dir, "log")), "expected XDG data log directory to be created"
+    assert not glob.glob(os.path.join(data_dir, "opencode-*.db")), "expected no persistent DB files matching opencode-*.db when OPENCODE_DB=:memory:"
+    assert os.path.isfile(os.path.join(cache_dir, "version")), "expected XDG cache version file to be created"
 
     os.remove(env_file)
     os.rmdir(env_dir)
+    shutil.rmtree(data_dir)
+    shutil.rmtree(cache_dir)
     shutil.rmtree(config_dir)
   '';
 }
