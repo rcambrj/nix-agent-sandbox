@@ -151,7 +151,7 @@ in
     "d /mnt/agent-sandbox/control 0755 root root -"
   ];
 
-  systemd.services."agent-sandbox-publish-guest-ip" = {
+  systemd.services."agent-sandbox-publish-guest-ip" = lib.mkIf isDarwinHost {
     unitConfig.DefaultDependencies = false;
     wantedBy = [ "multi-user.target" ];
     after = [ "network-online.target" "mnt-agent-sandbox-control.mount" ];
