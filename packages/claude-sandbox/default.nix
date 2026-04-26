@@ -18,37 +18,6 @@ flake.lib.mkAgentSandbox {
       systemd.tmpfiles.rules = [
         "d /mnt/agent-sandbox/config 0755 root root -"
       ];
-
-      systemd.services."agent-sandbox-mount-claude-share" = {
-        unitConfig.DefaultDependencies = false;
-        wantedBy = [ "multi-user.target" ];
-        after = [ "mnt-agent-sandbox-control.mount" ];
-        serviceConfig.Type = "oneshot";
-        script = ''
-          mount_virtiofs() {
-            tag="$1"
-            target="$2"
-
-            for _ in 1 2 3 4 5 6 7 8 9 10; do
-              if grep -qs " $target " /proc/mounts; then
-                return 0
-              fi
-
-              if mount -t virtiofs "$tag" "$target" >/dev/null 2>&1; then
-                return 0
-              fi
-
-              sleep 1
-            done
-
-            echo "failed to mount virtiofs tag '$tag' on '$target'" >&2
-            return 1
-          }
-
-          mkdir -p /mnt/agent-sandbox/config/claude
-          mount_virtiofs claude-config /mnt/agent-sandbox/config/claude
-        '';
-      };
     }
   ];
 
