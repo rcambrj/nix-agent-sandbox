@@ -9,6 +9,11 @@ let
     enableSshServer = false;
     sshMaxAttempts = 1;
   });
+  bootLogsLauncher = hostPkgs.lib.getExe (flake.packages.${hostSystem}.mock-sandbox.override {
+    enableSshServer = false;
+    sshMaxAttempts = 1;
+    showBootLogs = true;
+  });
   opencodeLauncher = hostPkgs.lib.getExe flake.packages.${hostSystem}.opencode-sandbox;
 in
 hostPkgs.testers.runNixOSTest {
@@ -26,6 +31,7 @@ hostPkgs.testers.runNixOSTest {
 
     generic_launcher = ${builtins.toJSON genericLauncher}
     failing_ssh_launcher = ${builtins.toJSON failingSshLauncher}
+    boot_logs_launcher = ${builtins.toJSON bootLogsLauncher}
     opencode_launcher = ${builtins.toJSON opencodeLauncher}
     claude_launcher = ${builtins.toJSON (hostPkgs.lib.getExe flake.packages.${hostSystem}.claude-sandbox)}
 
@@ -55,6 +61,7 @@ hostPkgs.testers.runNixOSTest {
     assert "ARG: hello" in out, f"expected 'ARG: hello' in output, got: {out!r}"
     assert "ARG: world" in out, f"expected 'ARG: world' in output, got: {out!r}"
     assert "TEST_AGENT_ARGS_END" in out, f"expected args end marker, got: {out!r}"
+    assert "mock-sandbox: SSH ready, connecting..." in out, f"expected SSH-ready marker, got: {out!r}"
 
     out = run_cmd([generic_launcher, f"--env-file={env_file}", "--", "hello", "world"])
     assert "TEST_AGENT_ENV_VAR=hello-from-env" in out, f"expected env var in output, got: {out!r}"
@@ -96,6 +103,10 @@ hostPkgs.testers.runNixOSTest {
     assert "SSH readiness timeout" in out, f"expected SSH timeout, got: {out!r}"
     assert "--- VM boot log ---" in out, f"expected boot log banner on SSH failure, got: {out!r}"
     assert "--- end boot log ---" in out, f"expected boot log footer on SSH failure, got: {out!r}"
+
+    out = run_cmd([boot_logs_launcher, "--", "hello"], expect_success=False)
+    assert "SSH readiness timeout" in out, f"expected SSH timeout, got: {out!r}"
+    assert "--- VM boot log ---" not in out, f"expected streamed boot logs to suppress boot log banner, got: {out!r}"
 
     os.remove(env_file)
     os.rmdir(env_dir)

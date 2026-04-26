@@ -42,11 +42,28 @@ let
     , extraFlags ? { }
     , extraFinalize ? (_: "")
     }:
-    args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, guestPkgs, pkgs, sshMaxAttempts, ... }:
+    args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, guestPkgs, pkgs, sshMaxAttempts, showBootLogs ? false, ... }:
     let
       sessionCmd = sessionCommand args;
       caseArmsText = renderExtraFlags extraFlags;
       finalizeText = extraFinalize args;
+      bootLogStreamText = lib.optionalString showBootLogs ''
+        tail_pid=""
+        ${coreutils}/bin/tail -n +1 -f "$ssh_log" >&2 &
+        tail_pid=$!
+      '';
+      bootLogCleanupText = lib.optionalString showBootLogs ''
+        if [ -n "$tail_pid" ]; then
+          kill "$tail_pid" 2>/dev/null || true
+          wait "$tail_pid" 2>/dev/null || true
+        fi
+      '';
+      bootLogFailureText = lib.optionalString (!showBootLogs) ''
+        echo >&2
+        echo '--- VM boot log ---' >&2
+        cat "$ssh_log" >&2
+        echo '--- end boot log ---' >&2
+      '';
       remoteScript = ''
         set -euo pipefail
 
@@ -174,7 +191,14 @@ let
       "$vm_runner" >> "$ssh_log" 2>&1 &
       vm_pid=$!
 
-      trap 'kill "$vm_pid" 2>/dev/null || true; wait "$vm_pid" 2>/dev/null || true; rm -rf "$control_dir"' EXIT INT TERM
+      ${bootLogStreamText}
+
+      trap '
+        kill "$vm_pid" 2>/dev/null || true
+        ${bootLogCleanupText}
+        wait "$vm_pid" 2>/dev/null || true
+        rm -rf "$control_dir"
+      ' EXIT INT TERM
 
       echo '${name}: starting VM, waiting for SSH...' >&2
 
@@ -201,10 +225,7 @@ let
 
         if ! kill -0 "$vm_pid" 2>/dev/null; then
           echo '${name}: VM exited during SSH readiness check' >&2
-          echo >&2
-          echo '--- VM boot log ---' >&2
-          cat "$ssh_log" >&2
-          echo '--- end boot log ---' >&2
+          ${bootLogFailureText}
           exit 1
         fi
 
@@ -213,12 +234,19 @@ let
 
       if [ $attempt -eq $max_attempts ]; then
         echo '${name}: SSH readiness timeout' >&2
-        echo >&2
-        echo '--- VM boot log ---' >&2
-        cat "$ssh_log" >&2
-        echo '--- end boot log ---' >&2
+        ${bootLogFailureText}
         exit 1
       fi
+
+      ${lib.optionalString showBootLogs ''
+      if [ -n "$tail_pid" ]; then
+        kill "$tail_pid" 2>/dev/null || true
+        wait "$tail_pid" 2>/dev/null || true
+        tail_pid=""
+      fi
+      ''}
+
+      echo '${name}: SSH ready, connecting...' >&2
 
       set +e
       ${openssh}/bin/ssh \
@@ -315,6 +343,7 @@ let
         coreutils = pkgs.coreutils;
         openssh = pkgs.openssh;
         nixpkgsLib = inputs.nixpkgs.lib;
+        inherit showBootLogs;
         inherit sshMaxAttempts;
       };
     };
