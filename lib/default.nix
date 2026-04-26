@@ -279,9 +279,6 @@ let
       echo '${name}: starting VM, waiting for SSH...' >&2
 
       max_attempts=${toString sshMaxAttempts}
-      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
-      max_attempts=5
-      ''}
       attempt=0
       while [ $attempt -lt $max_attempts ]; do
         if ${openssh}/bin/ssh \
