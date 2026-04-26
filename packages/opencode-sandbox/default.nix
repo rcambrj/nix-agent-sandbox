@@ -37,35 +37,14 @@ flake.lib.mkAgentSandbox {
 
   launcherScript = flake.lib.mkHarnessLauncherScript {
     sessionCommand = { guestSystem, pkgs, ... }: pkgs.writeShellScriptBin "opencode-wrapper" ''
-      ensure_mount() {
-        tag="$1"
-        target="$2"
-
-        mkdir -p "$target"
-        for _ in 1 2 3 4 5 6 7 8 9 10; do
-          if grep -qs " $target " /proc/mounts; then
-            return 0
-          fi
-
-          mount -t virtiofs "$tag" "$target" >/dev/null 2>&1 || true
-          sleep 1
-        done
-
-        echo "required mount not ready: $target ($tag)" >&2
-        exit 1
-      }
-
-      ensure_mount opencode-config /mnt/agent-sandbox/config/opencode
       export OPENCODE_DB=:memory:
       export XDG_CONFIG_HOME=/mnt/agent-sandbox/config
 
       if [ -r /mnt/agent-sandbox/control/opencode-has-data-dir ]; then
-        ensure_mount opencode-data /mnt/agent-sandbox/data/opencode
         export XDG_DATA_HOME=/mnt/agent-sandbox/data
       fi
 
       if [ -r /mnt/agent-sandbox/control/opencode-has-cache-dir ]; then
-        ensure_mount opencode-cache /mnt/agent-sandbox/cache/opencode
         export XDG_CACHE_HOME=/mnt/agent-sandbox/cache
       fi
 
