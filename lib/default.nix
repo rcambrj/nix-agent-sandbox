@@ -190,7 +190,6 @@ let
 
       export AGENT_SANDBOX_WORKSPACE_DIR="$share_path"
       export AGENT_SANDBOX_CONTROL_DIR="$control_dir"
-      export AGENT_SANDBOX_CONFIG_DIR="${emptyDir}"
       export AGENT_SANDBOX_SSH_LOG="$ssh_log"
       ${finalizeText}
 
