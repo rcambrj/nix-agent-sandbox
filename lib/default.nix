@@ -387,7 +387,6 @@ let
           agentSandboxHostSystem = system;
           agentSandboxShowBootLogs = showBootLogs;
           agentSandboxEnableSshServer = enableSshServer;
-          agentSandboxShowMarkers = false;
           agentSandboxExtraShares = extraShares;
         };
         modules = [
