@@ -42,11 +42,22 @@ let
     , extraFlags ? { }
     , extraFinalize ? (_: "")
     }:
-    args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, guestPkgs, pkgs, sshMaxAttempts, showBootLogs ? false, ... }:
+    args@{ name, emptyDir, vmRunner, coreutils, openssh, nixpkgsLib, guestSystem, guestPkgs, pkgs, sshMaxAttempts, showBootLogs ? false, extraShares ? [ ], ... }:
     let
       sessionCmd = sessionCommand args;
       caseArmsText = renderExtraFlags extraFlags;
       finalizeText = extraFinalize args;
+      extraShareStartText = lib.concatStringsSep "\n" (map (share:
+        let
+          readonlyFlag = if share.readOnly or false then "1" else "0";
+          startLine = "start_virtiofsd " + lib.escapeShellArg share.tag + " \"$" + share.sourceEnvVar + "\" " + readonlyFlag;
+        in
+        if share ? markerFile && share.markerFile != null then ''
+      if [ -e ${lib.escapeShellArg share.markerFile} ]; then
+        ${startLine}
+      fi
+        '' else startLine
+      ) extraShares);
       bootLogStreamText = lib.optionalString showBootLogs ''
         tail_pid=""
         ${coreutils}/bin/tail -n +1 -f "$ssh_log" >&2 &
@@ -165,6 +176,8 @@ let
       ssh_client_key="$control_dir/ssh_client_key"
       ssh_known_hosts="$control_dir/ssh_known_hosts"
       ssh_log="$control_dir/serial.log"
+      ssh_target_host="127.0.0.1"
+      ssh_target_port="$ssh_port"
 
       ${openssh}/bin/ssh-keygen -t ed25519 -f "$ssh_client_key" -N "" -q
       chmod 600 "$ssh_client_key"
@@ -173,36 +186,111 @@ let
 
       : > "$ssh_known_hosts"
 
-      set -- ${vmRunner}/bin/run-*-vm
-      if [ "$#" -ne 1 ]; then
-        printf '${name}: could not resolve VM runner in %s/bin\n' ${nixpkgsLib.escapeShellArg (toString vmRunner)} >&2
-        exit 1
-      fi
+      export AGENT_SANDBOX_SSH_PORT="$ssh_port"
 
       export AGENT_SANDBOX_WORKSPACE_DIR="$share_path"
       export AGENT_SANDBOX_CONTROL_DIR="$control_dir"
       export AGENT_SANDBOX_CONFIG_DIR="${emptyDir}"
+      export AGENT_SANDBOX_SSH_LOG="$ssh_log"
       ${finalizeText}
-      export NIX_DISK_IMAGE="$control_dir/agent-sandbox.qcow2"
-      export QEMU_NET_OPTS="hostfwd=tcp:127.0.0.1:$ssh_port-:22"
 
-      vm_runner="$1"
+      export AGENT_SANDBOX_VIRTIOFSD_DIR="$control_dir/virtiofsd"
+
+      virtiofsd_dir="$control_dir/virtiofsd"
+      mkdir -p "$virtiofsd_dir"
+
+      virtiofsd_pids=()
+      virtiofsd_pid=""
+
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      start_virtiofsd() {
+        tag="$1"
+        source_dir="$2"
+        readonly_flag="''${3:-0}"
+        socket_path="$virtiofsd_dir/$tag.sock"
+
+        if [ ! -d "$source_dir" ]; then
+          printf '%s: shared directory not found: %s\n' '${name}' "$source_dir" >&2
+          exit 1
+        fi
+
+        extra_args=""
+        if [ "$readonly_flag" -eq 1 ]; then
+          extra_args="--readonly"
+        fi
+
+        ${pkgs.virtiofsd}/bin/virtiofsd \
+          --socket-path="$socket_path" \
+          --shared-dir="$source_dir" \
+          --cache=never \
+          $extra_args \
+          >/dev/null 2>&1 &
+        virtiofsd_pids+=("$!")
+      }
+
+      start_virtiofsd workspace "$share_path"
+      start_virtiofsd control "$control_dir"
+      start_virtiofsd ro-store /nix/store 1
+      ${extraShareStartText}
+      ''}
+
+      ${lib.optionalString (!pkgs.stdenv.hostPlatform.isLinux) ''
+      true
+      ''}
+
+      vm_runner=${lib.escapeShellArg "${toString vmRunner}/bin/microvm-run"}
 
       "$vm_runner" >> "$ssh_log" 2>&1 &
       vm_pid=$!
 
       ${bootLogStreamText}
 
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+      guest_ip=""
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if [ -s "$control_dir/guest-ip" ]; then
+          guest_ip="$(${coreutils}/bin/tr -d '[:space:]' < "$control_dir/guest-ip")"
+          break
+        fi
+
+        if ! kill -0 "$vm_pid" 2>/dev/null; then
+          echo '${name}: VM exited before guest IP was written' >&2
+          ${bootLogFailureText}
+          exit 1
+        fi
+
+        sleep 1
+      done
+
+      if [ -z "$guest_ip" ]; then
+        echo '${name}: timed out waiting for guest IP file' >&2
+        ${bootLogFailureText}
+        exit 1
+      fi
+
+      ssh_target_host="$guest_ip"
+      ssh_target_port=22
+      ''}
+
       trap '
         kill "$vm_pid" 2>/dev/null || true
+        for virtiofsd_pid in "''${virtiofsd_pids[@]}"; do
+          kill "$virtiofsd_pid" 2>/dev/null || true
+        done
         ${bootLogCleanupText}
         wait "$vm_pid" 2>/dev/null || true
+        for virtiofsd_pid in "''${virtiofsd_pids[@]}"; do
+          wait "$virtiofsd_pid" 2>/dev/null || true
+        done
         rm -rf "$control_dir"
       ' EXIT INT TERM
 
       echo '${name}: starting VM, waiting for SSH...' >&2
 
       max_attempts=${toString sshMaxAttempts}
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+      max_attempts=5
+      ''}
       attempt=0
       while [ $attempt -lt $max_attempts ]; do
         if ${openssh}/bin/ssh \
@@ -216,8 +304,8 @@ let
           -o "BatchMode=yes" \
           -o "ConnectTimeout=1" \
           -o "LogLevel=error" \
-          -p "$ssh_port" \
-          root@127.0.0.1 \
+          -p "$ssh_target_port" \
+          root@"$ssh_target_host" \
           "exit 0" >/dev/null 2>&1; then
           break
         fi
@@ -259,8 +347,8 @@ let
         -o "IdentitiesOnly=yes" \
         -o "PreferredAuthentications=publickey" \
         -o "LogLevel=quiet" \
-        -p "$ssh_port" \
-        root@127.0.0.1 \
+        -p "$ssh_target_port" \
+        root@"$ssh_target_host" \
         ${lib.escapeShellArg "${guestPkgs.bashInteractive}/bin/bash -c ${lib.escapeShellArg remoteScript}"}
       ssh_exit=$?
       set -e
@@ -280,6 +368,7 @@ let
     , system
     , name
     , guestModules
+    , extraShares ? [ ]
     , extraModules ? [ ]
     , showBootLogs ? false
     , enableSshServer ? true
@@ -307,22 +396,33 @@ let
         system = guestSystem;
         specialArgs = {
           inherit flake inputs;
+          agentSandboxHostSystem = system;
           agentSandboxShowBootLogs = showBootLogs;
           agentSandboxEnableSshServer = enableSshServer;
           agentSandboxShowMarkers = false;
+          agentSandboxExtraShares = extraShares;
         };
         modules = [
-          (inputs.nixpkgs + "/nixos/modules/virtualisation/qemu-vm.nix")
+          inputs.microvm.nixosModules.microvm
           ./guest-vm.nix
           {
             nixpkgs.hostPlatform = guestSystem;
-            virtualisation.host.pkgs = hostPkgs;
+            microvm.vmHostPackages = hostPkgs;
           }
         ] ++ normalizeExtraModules guestPkgs guestModules
           ++ normalizeExtraModules guestPkgs extraModules;
       };
 
-      vmRunner = vmSystem.config.system.build.vm;
+      vmRunner = vmSystem.config.microvm.declaredRunner;
+      vmRunnerFixed = pkgs.runCommand "${name}-microvm-run-fixed" { } ''
+        mkdir -p "$out"
+        cp -R ${vmRunner}/. "$out"/
+
+        ${pkgs.coreutils}/bin/chmod -R u+w "$out"
+        ${pkgs.gnused}/bin/sed -i 's|\x27 ''${runtime_args:-}|\x27 bash ''${runtime_args:-}|' "$out/bin/microvm-run"
+        ${pkgs.gnused}/bin/sed -i 's|--device virtio-serial,stdio|--device virtio-serial,logFilePath=$AGENT_SANDBOX_SSH_LOG|' "$out/bin/microvm-run"
+        ${pkgs.gnused}/bin/sed -i 's|--restful-uri "unix:///$SOCKET_ABS"|--restful-uri "unix:///$SOCKET_ABS" "$@"|' "$out/bin/microvm-run"
+      '';
     in
     pkgs.writeShellApplication {
       inherit name;
@@ -339,12 +439,14 @@ let
       passthru = { inherit emptyDir vmSystem; };
 
       text = launcherScript {
-        inherit name emptyDir vmRunner guestSystem guestPkgs pkgs;
+        inherit name emptyDir guestSystem guestPkgs pkgs;
+        vmRunner = vmRunnerFixed;
         coreutils = pkgs.coreutils;
         openssh = pkgs.openssh;
         nixpkgsLib = inputs.nixpkgs.lib;
         inherit showBootLogs;
         inherit sshMaxAttempts;
+        inherit extraShares;
       };
     };
 

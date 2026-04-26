@@ -31,11 +31,12 @@
 - When adding a new harness, create: `packages/<harness>-sandbox/`, `modules/nixos/<harness>-sandbox.nix`, and update tests.
 
 ## Verify
-- Always run `nix build .#nix-agent-sandbox-test` unless changes are to docs only
+- Always conclude by running `nix build .#nix-agent-sandbox-test` (unless changes are to docs only) to verify the whole test suite
 - Launcher tests and the NixOS module tests are in separate files
 - All tests are run by this one convenient package
 - Starting VMs is costly so test as many features as possible in each instantiation
-- For specific verification scenarios run:
-  - `nix run .#opencode-sandbox -- <launcher args> -- <opencode args>`
-  - `nix run .#claude-sandbox -- <launcher args> -- <claude args>`
-  - `nix run .#mock-sandbox -- <launcher args> -- <test-agent args>`
+- If the VM, SSH or harness isn't coming up, it's faster to iterate with just that command instead of running the test suite
+- For specific verification commands run:
+  - `nix run .#mock-sandbox -- <launcher args> -- <test-agent args>` example: `nix run .#mock-sandbox -- -- hello world`
+  - `nix run .#claude-sandbox -- <launcher args> -- <claude args>` example: `nix run .#claude-sandbox -- -- --help`
+  - `nix run .#opencode-sandbox -- <launcher args> -- <opencode args>` example: `nix run .#opencode-sandbox -- -- --help`

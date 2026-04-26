@@ -1,10 +1,10 @@
 builds:
   include:
-    # run the tests for one system
-    # note: can't run the test on aarch64-darwin
-    - "checks.x86_64-linux.opencode-sandbox"
+    - "packages.x86_64-linux.nix-agent-sandbox-test"
+    - "packages.aarch64-darwin.nix-agent-sandbox-test"
 
     # build+cache for other systems
+    - "packages.x86_64-linux.opencode-sandbox"
     - "packages.aarch64-darwin.opencode-sandbox"
     - "packages.aarch64-linux.opencode-sandbox"
     - "packages.x86_64-darwin.opencode-sandbox"

@@ -1,26 +1,175 @@
-{ lib, agentSandboxEnableSshServer ? true, agentSandboxShowBootLogs ? false, pkgs, ... }:
+{ lib, agentSandboxHostSystem, agentSandboxExtraShares ? [ ], agentSandboxEnableSshServer ? true, agentSandboxShowBootLogs ? false, pkgs, ... }:
 
 let
   consoleDevice = if pkgs.stdenv.hostPlatform.isAarch64 then "ttyAMA0" else "ttyS0";
+  isDarwinHost = lib.hasSuffix "-darwin" agentSandboxHostSystem;
+  allMountDirs = [
+    "/workspace"
+    "/mnt/agent-sandbox/control"
+    "/mnt/agent-sandbox/config"
+    "/mnt/agent-sandbox/data"
+    "/mnt/agent-sandbox/cache"
+    "/nix/.ro-store"
+    "/nix/.rw-store/store"
+    "/nix/.rw-store/work"
+  ] ++ map (share: share.mountPoint) agentSandboxExtraShares;
+
+  extraFileSystems = lib.listToAttrs (map (share: {
+    name = share.mountPoint;
+    value = {
+      device = share.tag;
+      fsType = "virtiofs";
+      neededForBoot = true;
+    };
+  }) agentSandboxExtraShares);
+
+  mountDirsScript = lib.concatStringsSep " \
+        " (map lib.escapeShellArg allMountDirs);
+
+  darwinDeviceArgs = [
+    "--device \"virtio-net,nat,mac=02:00:00:01:01:01\""
+    "--device \"virtio-fs,sharedDir=$AGENT_SANDBOX_WORKSPACE_DIR,mountTag=workspace\""
+    "--device \"virtio-fs,sharedDir=$AGENT_SANDBOX_CONTROL_DIR,mountTag=control\""
+  ] ++ map (share:
+    lib.concatStrings [
+      "--device \"virtio-fs,sharedDir=$"
+      share.sourceEnvVar
+      ",mountTag="
+      share.tag
+      "\""
+    ]
+  ) agentSandboxExtraShares;
+
+  linuxDeviceArgs = [
+    "-object \"memory-backend-memfd,id=mem,size=4096M,share=on\""
+    "-numa \"node,memdev=mem\""
+    "-netdev \"user,id=qemu,hostfwd=tcp:127.0.0.1:$AGENT_SANDBOX_SSH_PORT-:22\""
+    "-device \"virtio-net-pci,netdev=qemu,mac=02:00:00:01:01:01\""
+    "-chardev \"socket,id=workspace,path=$AGENT_SANDBOX_VIRTIOFSD_DIR/workspace.sock\""
+    "-device \"vhost-user-fs-pci,chardev=workspace,tag=workspace\""
+    "-chardev \"socket,id=control,path=$AGENT_SANDBOX_VIRTIOFSD_DIR/control.sock\""
+    "-device \"vhost-user-fs-pci,chardev=control,tag=control\""
+    "-chardev \"socket,id=ro-store,path=$AGENT_SANDBOX_VIRTIOFSD_DIR/ro-store.sock\""
+    "-device \"vhost-user-fs-pci,chardev=ro-store,tag=ro-store\""
+  ] ++ lib.concatMap (share: [
+    "-chardev \"socket,id=${share.tag},path=$AGENT_SANDBOX_VIRTIOFSD_DIR/${share.tag}.sock\""
+    "-device \"vhost-user-fs-pci,chardev=${share.tag},tag=${share.tag}\""
+  ]) agentSandboxExtraShares;
 in
 {
-  virtualisation.graphics = false;
-  virtualisation.memorySize = 4096;
-  virtualisation.cores = 4;
-  virtualisation.sharedDirectories.workspace = {
-    source = ''"$AGENT_SANDBOX_WORKSPACE_DIR"'';
-    target = "/workspace";
-    securityModel = "none";
+  microvm = {
+    hypervisor = if isDarwinHost then "vfkit" else "qemu";
+    mem = 4096;
+    vcpu = 4;
+    graphics.enable = false;
+    storeOnDisk = false;
+    virtiofsd.package = if isDarwinHost then pkgs.writeShellScriptBin "virtiofsd" ''
+      exit 1
+    '' else pkgs.virtiofsd;
+    shares = [
+      {
+        source = "/nix/store";
+        mountPoint = "/nix/.ro-store";
+        proto = "virtiofs";
+        readOnly = true;
+        tag = "ro-store";
+      }
+    ];
+    extraArgsScript = ''
+      ${lib.optionalString isDarwinHost ''
+      printf '%s\n' ${lib.concatStringsSep " " darwinDeviceArgs}
+      ''}
+
+      ${lib.optionalString (!isDarwinHost) ''
+      printf '%s\n' ${lib.concatStringsSep " " linuxDeviceArgs}
+      ''}
+    '';
   };
-  virtualisation.sharedDirectories.control = {
-    source = ''"$AGENT_SANDBOX_CONTROL_DIR"'';
-    target = "/mnt/agent-sandbox/control";
-    securityModel = "none";
+
+  fileSystems = {
+    "/workspace" = {
+      device = "workspace";
+      fsType = "virtiofs";
+      neededForBoot = true;
+    };
+
+    "/mnt/agent-sandbox/control" = {
+      device = "control";
+      fsType = "virtiofs";
+      neededForBoot = true;
+    };
+
+    "/nix/.ro-store" = {
+      device = "ro-store";
+      fsType = "virtiofs";
+      options = [ "ro" ];
+      neededForBoot = true;
+    };
+
+    "/nix/.rw-store" = {
+      device = "tmpfs";
+      fsType = "tmpfs";
+      options = [ "mode=0755" ];
+      neededForBoot = true;
+    };
+
+    "/nix/store" = lib.mkForce {
+      device = "overlay";
+      fsType = "overlay";
+      options = [
+        "lowerdir=/nix/.ro-store"
+        "upperdir=/nix/.rw-store/store"
+        "workdir=/nix/.rw-store/work"
+      ];
+      neededForBoot = true;
+    };
+  } // extraFileSystems;
+
+  networking.useNetworkd = true;
+  systemd.network.enable = true;
+  systemd.network.networks."10-ether" = {
+    matchConfig.Type = "ether";
+    networkConfig.DHCP = "yes";
+    dhcpV4Config.ClientIdentifier = "mac";
   };
+
+  boot.initrd.systemd.services."agent-sandbox-mount-points" = {
+    unitConfig.DefaultDependencies = false;
+    wantedBy = [ "initrd-fs.target" ];
+    before = [ "initrd-fs.target" ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      mkdir -p \
+        ${mountDirsScript}
+    '';
+  };
+
+  boot.initrd.availableKernelModules = [ "overlay" ];
+
   systemd.tmpfiles.rules = [
     "d /mnt/agent-sandbox 0755 root root -"
     "d /mnt/agent-sandbox/control 0755 root root -"
   ];
+
+  systemd.services."agent-sandbox-publish-guest-ip" = {
+    unitConfig.DefaultDependencies = false;
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" "mnt-agent-sandbox-control.mount" ];
+    wants = [ "network-online.target" ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      ip=""
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        ip="$(${pkgs.iproute2}/bin/ip -4 -o addr show scope global | ${pkgs.gawk}/bin/awk '{ split($4, a, "/"); print a[1]; exit }')"
+        if [ -n "$ip" ]; then
+          printf '%s\n' "$ip" > /mnt/agent-sandbox/control/guest-ip
+          exit 0
+        fi
+        sleep 1
+      done
+      exit 0
+    '';
+  };
   boot.loader.grub.enable = false;
   boot.kernelParams = [
     "console=${consoleDevice}"

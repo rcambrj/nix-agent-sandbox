@@ -53,8 +53,7 @@ in
       description = ''
         Optional host directory mounted inside the VM and exposed to opencode via XDG_DATA_HOME.
 
-        opencode stores its main state in SQLite. Shared host filesystems used by QEMU VMs here rely on 9p,
-        and virtiofs is not a general fix for SQLite WAL either. Those shared filesystems do not provide the
+        opencode stores its main state in SQLite. Shared host filesystems still do not provide the
         locking and shared-memory behavior SQLite expects, so the sandbox defaults OPENCODE_DB to :memory:.
 
         If you want database-backed persistence anyway, you can opt in via env file with a SQLite URI such as
