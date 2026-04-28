@@ -118,7 +118,6 @@ in
   fi
 
   control_dir="$(${coreutils}/bin/mktemp -d "''${TMPDIR:-/tmp}/${name}.XXXXXX")"
-  trap 'rm -rf "$control_dir"' EXIT INT TERM
 
   : > "$control_dir/agent-args"
   for arg in "''${agent_args[@]}"; do
