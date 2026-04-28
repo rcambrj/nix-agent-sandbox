@@ -25,9 +25,10 @@ let
     tail_pid=$!
   '';
   bootLogCleanupText = lib.optionalString showBootLogs ''
-    if [ -n "$tail_pid" ]; then
+    if [ -n "''${tail_pid:-}" ]; then
       kill "$tail_pid" 2>/dev/null || true
       wait "$tail_pid" 2>/dev/null || true
+      tail_pid=""
     fi
   '';
   bootLogFailureText = lib.optionalString (!showBootLogs) ''
@@ -139,6 +140,16 @@ in
   ssh_target_host="127.0.0.1"
   ssh_target_port="$ssh_port"
 
+  ssh_common_opts=(
+    -F /dev/null
+    -i "$ssh_client_key"
+    -o "UserKnownHostsFile=$ssh_known_hosts"
+    -o "GlobalKnownHostsFile=/dev/null"
+    -o "StrictHostKeyChecking=accept-new"
+    -o "IdentitiesOnly=yes"
+    -o "PreferredAuthentications=publickey"
+  )
+
   ${openssh}/bin/ssh-keygen -t ed25519 -f "$ssh_client_key" -N "" -q
   chmod 600 "$ssh_client_key"
   ${openssh}/bin/ssh-keygen -y -f "$ssh_client_key" > "$control_dir/authorized_keys"
@@ -241,13 +252,7 @@ in
   attempt=0
   while [ $attempt -lt $max_attempts ]; do
     if ${openssh}/bin/ssh \
-      -F /dev/null \
-      -i "$ssh_client_key" \
-      -o "UserKnownHostsFile=$ssh_known_hosts" \
-      -o "GlobalKnownHostsFile=/dev/null" \
-      -o "StrictHostKeyChecking=accept-new" \
-      -o "IdentitiesOnly=yes" \
-      -o "PreferredAuthentications=publickey" \
+      "''${ssh_common_opts[@]}" \
       -o "BatchMode=yes" \
       -o "ConnectTimeout=1" \
       -o "LogLevel=error" \
@@ -274,25 +279,15 @@ in
   fi
 
   ${lib.optionalString showBootLogs ''
-  if [ -n "$tail_pid" ]; then
-    kill "$tail_pid" 2>/dev/null || true
-    wait "$tail_pid" 2>/dev/null || true
-    tail_pid=""
-  fi
+  ${bootLogCleanupText}
   ''}
 
   echo '${name}: SSH ready, connecting...' >&2
 
   set +e
   ${openssh}/bin/ssh \
-    -F /dev/null \
     -tt \
-    -i "$ssh_client_key" \
-    -o "UserKnownHostsFile=$ssh_known_hosts" \
-    -o "GlobalKnownHostsFile=/dev/null" \
-    -o "StrictHostKeyChecking=accept-new" \
-    -o "IdentitiesOnly=yes" \
-    -o "PreferredAuthentications=publickey" \
+    "''${ssh_common_opts[@]}" \
     -o "LogLevel=quiet" \
     -p "$ssh_target_port" \
     root@"$ssh_target_host" \
