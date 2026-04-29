@@ -6,9 +6,6 @@ let
   allMountDirs = [
     "/workspace"
     "/mnt/agent-sandbox/control"
-    "/mnt/agent-sandbox/config"
-    "/mnt/agent-sandbox/data"
-    "/mnt/agent-sandbox/cache"
     "/nix/.ro-store"
     "/nix/.rw-store/store"
     "/nix/.rw-store/work"
