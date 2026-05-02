@@ -17,9 +17,6 @@ nix run github:rcambrj/nix-agent-sandbox#opencode-sandbox
 # Run claude in a sandbox:
 nix run github:rcambrj/nix-agent-sandbox#claude-sandbox
 
-# Run the test agent (echo agent for verification):
-nix run github:rcambrj/nix-agent-sandbox#mock-sandbox
-
 # Pass sandbox args after one `--`:
 nix run .#opencode-sandbox -- ~/projects/my-project \
   --data-dir=./data \
@@ -99,6 +96,12 @@ Add this repository to your flake inputs:
 }
 ```
 
+Now run:
+
+```
+opencode-sandbox -- --help
+```
+
 ### claude-sandbox
 
 ```nix
@@ -127,6 +130,12 @@ Add this repository to your flake inputs:
     exposeHostPorts = [ 11434 ];
   };
 }
+```
+
+Now run:
+
+```
+claude-sandbox -- --help
 ```
 
 ## Notes
