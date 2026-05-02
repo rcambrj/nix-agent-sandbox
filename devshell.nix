@@ -9,6 +9,7 @@ pkgs.mkShell {
         showBootLogs = true;
       };
       flags = {
+        expose-host-ports = [ 1234 ];
         env-file = pkgs.writeText "opencode-sandbox-env" ''
           OPENCODE_ENABLE_EXA=1
         '';

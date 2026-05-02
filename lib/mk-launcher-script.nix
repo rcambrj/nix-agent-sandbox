@@ -246,7 +246,7 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
 
   ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
     guest_ip=""
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
       if [ -s "$control_dir/guest-ip" ]; then
         guest_ip="$(${coreutils}/bin/tr -d '[:space:]' < "$control_dir/guest-ip")"
         break
