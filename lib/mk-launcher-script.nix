@@ -14,6 +14,9 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
   workspace_path="$PWD"
   workspace_path_seen=0
   env_files=()
+  expose_host_ports_seen=0
+  expose_host_ports_csv=""
+  expose_host_ports=()
   agent_args=()
 
   while [ "$#" -gt 0 ]; do
@@ -25,6 +28,11 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
         ;;
       --env-file=*)
         env_files+=("''${1#--env-file=}")
+        shift
+        ;;
+      --expose-host-ports=*)
+        expose_host_ports_seen=1
+        expose_host_ports_csv="''${1#--expose-host-ports=}"
         shift
         ;;
       ${renderExtraFlags extraFlags}
@@ -68,6 +76,47 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
     done
   fi
 
+  if [ "$expose_host_ports_seen" -eq 1 ]; then
+    if [ -z "$expose_host_ports_csv" ]; then
+      expose_host_ports=()
+    elif [[ "$expose_host_ports_csv" =~ [[:space:]] ]]; then
+      printf '${name}: --expose-host-ports must not contain whitespace\n' >&2
+      exit 2
+    elif [[ "$expose_host_ports_csv" == ,* ]] || [[ "$expose_host_ports_csv" == *, ]] || [[ "$expose_host_ports_csv" == *",,"* ]]; then
+      printf '${name}: --expose-host-ports contains an empty entry\n' >&2
+      exit 2
+    else
+      IFS=',' read -r -a expose_host_ports <<< "$expose_host_ports_csv"
+      if [ ''${#expose_host_ports[@]} -eq 0 ]; then
+        expose_host_ports=()
+      fi
+
+      seen_ports=","
+      for port in "''${expose_host_ports[@]}"; do
+        if [ -z "$port" ]; then
+          printf '${name}: --expose-host-ports contains an empty entry\n' >&2
+          exit 2
+        fi
+
+        if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+          printf '${name}: invalid host port in --expose-host-ports: %s\n' "$port" >&2
+          exit 2
+        fi
+
+        if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+          printf '${name}: host port out of range in --expose-host-ports: %s\n' "$port" >&2
+          exit 2
+        fi
+
+        if [[ "$seen_ports" == *",$port,"* ]]; then
+          printf '${name}: duplicate host port in --expose-host-ports: %s\n' "$port" >&2
+          exit 2
+        fi
+        seen_ports+="$port,"
+      done
+    fi
+  fi
+
   #####################################
   # SSH
   #####################################
@@ -77,6 +126,11 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
   ssh_log="$control_dir/serial.log"
   ssh_target_host="127.0.0.1"
   ssh_target_port="$(( ($$ + RANDOM) % 40000 + 1024 ))"
+  ssh_forward_args=()
+
+  for port in "''${expose_host_ports[@]}"; do
+    ssh_forward_args+=("-R" "$port:127.0.0.1:$port")
+  done
 
   ${openssh}/bin/ssh-keygen -t ed25519 -f "$ssh_client_key" -N "" -q
   chmod 600 "$ssh_client_key"
@@ -93,6 +147,7 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
       -o "StrictHostKeyChecking=accept-new" \
       -o "IdentitiesOnly=yes" \
       -o "PreferredAuthentications=publickey" \
+      "''${ssh_forward_args[@]}" \
       "$@"
   }
 

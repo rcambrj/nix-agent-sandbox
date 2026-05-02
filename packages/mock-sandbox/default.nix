@@ -8,12 +8,21 @@ flake.lib.mkSandboxPackage {
   guestModules = [ ];
 
   launcherScript = flake.lib.mkLauncherScript {
-    sessionCommand = { guestSystem, pkgs, ... }: pkgs.writeShellScriptBin "mock-wrapper" ''
+    sessionCommand = { guestSystem, guestPkgs, ... }: guestPkgs.writeShellScriptBin "mock-wrapper" ''
       if [ "''${1:-}" = "fail-stderr" ]; then
         printf 'TEST_AGENT_STDERR_START\n' >&2
         sleep 1
         printf 'TEST_AGENT_STDERR_END\n' >&2
         exit 42
+      fi
+
+      if [ "''${1:-}" = "probe-host-port" ]; then
+        if [ -z "''${2:-}" ]; then
+          echo "TEST_HOST_PORT_PROBE_FAIL"
+          exit 1
+        fi
+        ${guestPkgs.curl}/bin/curl -fsS "http://127.0.0.1:$2/"
+        exit 0
       fi
 
       echo "TEST_AGENT_ARGS_START"

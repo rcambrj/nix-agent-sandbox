@@ -33,8 +33,11 @@ hostPkgs.testers.runNixOSTest {
     import json
     import glob
     import shutil
+    import socket
     import subprocess
     import tempfile
+    import threading
+    import contextlib
 
     generic_launcher = ${builtins.toJSON genericLauncher}
     failing_ssh_launcher = ${builtins.toJSON failingSshLauncher}
@@ -59,6 +62,41 @@ hostPkgs.testers.runNixOSTest {
             raise Exception(f"expected failure, got success: {result.stdout}")
         return result.stdout
 
+    @contextlib.contextmanager
+    def host_listener_once(port=0):
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", port))
+        server.listen(1)
+        selected_port = server.getsockname()[1]
+        payload = "HOST_OK_PAYLOAD"
+        accepted = {"ok": False, "port": selected_port}
+
+        def _accept_once():
+            try:
+                conn, _ = server.accept()
+                accepted["ok"] = True
+                response = (
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: text/plain\r\n"
+                    f"Content-Length: {len(payload)}\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                    f"{payload}"
+                )
+                conn.sendall(response.encode("utf-8"))
+                conn.close()
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=_accept_once, daemon=True)
+        thread.start()
+        try:
+            yield accepted
+        finally:
+            server.close()
+            thread.join(timeout=2)
+
     env_dir = tempfile.mkdtemp(prefix="mock-sandbox-test-env-")
     env_file = os.path.join(env_dir, "env")
     with open(env_file, "w") as f:
@@ -79,6 +117,36 @@ hostPkgs.testers.runNixOSTest {
 
     out = run_cmd([generic_launcher, "--bogus", "--", "hello"], expect_success=False)
     assert "unknown launcher flag before --" in out, f"expected unknown launcher flag failure, got: {out!r}"
+
+    with host_listener_once() as accepted:
+        port = accepted["port"]
+        out = run_cmd([generic_launcher, f"--expose-host-ports={port}", "--", "probe-host-port", str(port)])
+        assert "HOST_OK_PAYLOAD" in out, f"expected HTTP payload from host listener, got: {out!r}"
+        assert accepted["ok"], "expected host listener to receive one connection"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=21435, 21436", "--", "hello"], expect_success=False)
+    assert "must not contain whitespace" in out, f"expected whitespace validation failure, got: {out!r}"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=", "--", "hello"])
+    assert "TEST_AGENT_ARGS_START" in out, f"expected empty expose-host-ports to be a no-op, got: {out!r}"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=21434,", "--", "hello"], expect_success=False)
+    assert "contains an empty entry" in out, f"expected trailing-comma failure, got: {out!r}"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=,21434", "--", "hello"], expect_success=False)
+    assert "contains an empty entry" in out, f"expected leading-comma failure, got: {out!r}"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=abc", "--", "hello"], expect_success=False)
+    assert "invalid host port" in out, f"expected non-numeric expose-host-ports failure, got: {out!r}"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=0", "--", "hello"], expect_success=False)
+    assert "out of range" in out, f"expected low out-of-range expose-host-ports failure, got: {out!r}"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=65536", "--", "hello"], expect_success=False)
+    assert "out of range" in out, f"expected high out-of-range expose-host-ports failure, got: {out!r}"
+
+    out = run_cmd([generic_launcher, "--expose-host-ports=21434,21434", "--", "hello"], expect_success=False)
+    assert "duplicate host port" in out, f"expected duplicate expose-host-ports failure, got: {out!r}"
 
     proc = subprocess.Popen(
         [generic_launcher, "--", "fail-stderr"],

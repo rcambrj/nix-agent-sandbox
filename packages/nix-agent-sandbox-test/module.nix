@@ -33,6 +33,7 @@ hostPkgs.testers.runNixOSTest {
       configDir = pkgs.writeTextDir "opencode.json" (builtins.toJSON {
         "$schema" = "https://opencode.ai/config.json";
       });
+      exposeHostPorts = [ 11434 8080 ];
     };
   };
 
@@ -65,6 +66,7 @@ hostPkgs.testers.runNixOSTest {
         permissions = { allow = ["*"]; };
       });
       envFile = pkgs.writeText "claude-env" "CLAUDE_TEST=1";
+      exposeHostPorts = [ 9000 ];
     };
   };
 
@@ -92,6 +94,7 @@ hostPkgs.testers.runNixOSTest {
     args = parse_args(out)
     assert any(arg.startswith("--config-dir=") for arg in args), f"expected --config-dir= arg, got: {args!r}"
     assert "opencode.json" in str(args), f"expected config dir to contain opencode.json, got: {args!r}"
+    assert "--expose-host-ports=11434,8080" in args, f"expected --expose-host-ports from module config, got: {args!r}"
 
     machineWithDirs.wait_for_unit("multi-user.target")
 
@@ -115,5 +118,6 @@ hostPkgs.testers.runNixOSTest {
     assert any(arg.startswith("--config-dir=") for arg in args), f"expected --config-dir= arg, got: {args!r}"
     assert "settings.json" in str(args), f"expected config dir to contain settings.json, got: {args!r}"
     assert any(arg.startswith("--env-file=") for arg in args), f"expected --env-file= when configured, got: {args!r}"
+    assert "--expose-host-ports=9000" in args, f"expected --expose-host-ports from module config, got: {args!r}"
   '';
 }

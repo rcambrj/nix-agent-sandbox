@@ -178,6 +178,7 @@ in
       PasswordAuthentication = false;
       KbdInteractiveAuthentication = false;
       StrictModes = false;
+      AllowTcpForwarding = "yes";
     };
     authorizedKeysFiles = [ "/mnt/agent-sandbox/control/authorized_keys" ];
   };

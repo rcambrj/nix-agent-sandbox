@@ -24,7 +24,8 @@ nix run github:rcambrj/nix-agent-sandbox#mock-sandbox
 nix run .#opencode-sandbox -- ~/projects/my-project \
   --data-dir=./data \
   --cache-dir=./cache \
-  --config-dir=./config
+  --config-dir=./config \
+  --expose-host-ports=11434,8080
 
 # Pass agent arguments after *another* `--`:
 nix run .#opencode-sandbox -- -- --help
@@ -84,6 +85,7 @@ Add this repository to your flake inputs:
 
     dataDir = /persist/opencode/data;
     cacheDir = /persist/opencode/cache;
+    exposeHostPorts = [ 11434 8080 ];
     showBootLogs = false;
     extraModules = [
       {
@@ -122,6 +124,7 @@ Add this repository to your flake inputs:
     '';
 
     showBootLogs = false;
+    exposeHostPorts = [ 11434 ];
   };
 }
 ```
@@ -137,3 +140,8 @@ Add this repository to your flake inputs:
 
 > [!WARNING]
 > `envFile`, `configDir`, `dataDir`, and `cacheDir` are exposed read-write inside the guest. Take care what you put there.
+
+> [!NOTE]
+> `--expose-host-ports=<csv>` exposes host localhost TCP ports to the guest on the same port numbers.
+> The CSV value must not contain whitespace (use `11434,8080`, not `11434, 8080`).
+> For example, `--expose-host-ports=11434` lets the guest connect to `127.0.0.1:11434` and reach host `127.0.0.1:11434`.

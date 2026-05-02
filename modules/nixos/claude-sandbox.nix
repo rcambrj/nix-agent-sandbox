@@ -45,6 +45,15 @@ in
       '';
     };
 
+    exposeHostPorts = lib.mkOption {
+      type = lib.types.listOf lib.types.int;
+      default = [ ];
+      description = ''
+        Host TCP ports exposed into the guest on the same port numbers.
+        Guest connections to 127.0.0.1:<port> are forwarded to host 127.0.0.1:<port>.
+      '';
+    };
+
     package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
       default = null;
@@ -74,6 +83,7 @@ in
         flags = {
           env-file = cfg.envFile;
           config-dir = cfg.configDir;
+          expose-host-ports = lib.concatStringsSep "," (map builtins.toString cfg.exposeHostPorts);
         };
       })
     ];
