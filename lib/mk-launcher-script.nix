@@ -374,10 +374,7 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
       rc=$?
       set -e
 
-      (
-        sleep 1
-        ${guestPkgs.systemd}/bin/poweroff || true
-      ) >/dev/null 2>&1 &
+      echo "${name}: Process exited with code $rc" >&2
       exit "$rc"
     ''}"
   ssh_exit=$?
