@@ -71,8 +71,6 @@ pkgs.writeShellApplication {
     pkgs.openssh
   ];
 
-  excludeShellChecks = [ "SC1003" ];
-
   meta.license = pkgs.lib.licenses.mit;
 
   passthru = { inherit emptyDir vmSystem; };
