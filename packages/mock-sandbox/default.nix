@@ -25,6 +25,21 @@ flake.lib.mkSandboxPackage {
         exit 0
       fi
 
+      if [ "''${1:-}" = "nix-store-write-smoke" ]; then
+        nix_store_mount_count="$(${guestPkgs.util-linux}/bin/findmnt -Rno TARGET /nix/store | ${guestPkgs.coreutils}/bin/wc -l)"
+        nix_store_mount_count="$(${guestPkgs.coreutils}/bin/tr -d '[:space:]' <<< "$nix_store_mount_count")"
+        printf 'TEST_NIX_STORE_MOUNT_COUNT=%s\n' "$nix_store_mount_count"
+
+        ${guestPkgs.nix}/bin/nix build --no-link --offline --impure --expr 'derivation {
+          name = "sandbox-store-write-smoke";
+          system = builtins.currentSystem;
+          builder = "/bin/sh";
+          args = [ "-c" "mkdir -p $out; echo ok > $out/result" ];
+        }'
+        echo "TEST_NIX_STORE_WRITE_OK"
+        exit 0
+      fi
+
       echo "TEST_AGENT_ARGS_START"
       for arg in "$@"; do
         echo "ARG: $arg"

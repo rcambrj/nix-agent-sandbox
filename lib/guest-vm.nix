@@ -109,6 +109,8 @@ in
       device = "overlay";
       fsType = "overlay";
       options = [
+        "nosuid"
+        "nodev"
         "lowerdir=/nix/.ro-store"
         "upperdir=/nix/.rw-store/store"
         "workdir=/nix/.rw-store/work"
@@ -137,7 +139,7 @@ in
   };
 
   boot.initrd.availableKernelModules = [ "overlay" ];
-
+  boot.nixStoreMountOpts = lib.mkForce [ "nosuid" "nodev" ];
   systemd.tmpfiles.rules = [
     "d /mnt/agent-sandbox 0755 root root -"
     "d /mnt/agent-sandbox/control 0755 root root -"

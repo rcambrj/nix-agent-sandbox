@@ -117,6 +117,10 @@ hostPkgs.testers.runNixOSTest {
     assert "TEST_AGENT_ARGS_END" in out, f"expected args end marker, got: {out!r}"
     assert "mock-sandbox: SSH ready, connecting..." in out, f"expected SSH-ready marker, got: {out!r}"
 
+    out = run_cmd([generic_launcher, "--", "nix-store-write-smoke"])
+    assert "TEST_NIX_STORE_MOUNT_COUNT=1" in out, f"expected single /nix/store mount in guest, got: {out!r}"
+    assert "TEST_NIX_STORE_WRITE_OK" in out, f"expected nix store write smoke marker, got: {out!r}"
+
     out = run_cmd([generic_launcher, f"--env-file={env_file}", "--", "hello", "world"])
     assert "TEST_AGENT_ENV_VAR=hello-from-env" in out, f"expected env var in output, got: {out!r}"
 
