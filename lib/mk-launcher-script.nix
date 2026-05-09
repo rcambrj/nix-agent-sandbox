@@ -222,6 +222,8 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
   # VM runner env, start & shutdown trap
   #####################################
 
+  echo '${name}: Starting VM...' >&2
+
   export AGENT_SANDBOX_SSH_PORT="$ssh_target_port"
   export AGENT_SANDBOX_WORKSPACE_DIR="$workspace_path"
   export AGENT_SANDBOX_CONTROL_DIR="$control_dir"
@@ -270,6 +272,8 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
   #####################################
 
   ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+    echo '${name}: waiting for guest IP...' >&2
+
     guest_ip=""
     max_attempts=20
     attempt=0
@@ -293,13 +297,14 @@ args@{ name, emptyDir, vmRunner, coreutils, openssh, guestSystem, guestPkgs, pkg
 
     ssh_target_host="$guest_ip"
     ssh_target_port=22
+    echo "${name}: got guest IP $guest_ip" >&2
   ''}
 
   #####################################
   # Try SSH
   #####################################
 
-  echo '${name}: starting VM, waiting for SSH...' >&2
+  echo '${name}: waiting for SSH...' >&2
 
   max_attempts=${toString sshMaxAttempts}
   attempt=0

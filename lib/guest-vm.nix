@@ -155,8 +155,13 @@ in
       max_attempts=10
       attempt=0
       while [ "$attempt" -lt "$max_attempts" ]; do
-        ip="$(${pkgs.iproute2}/bin/ip -4 -o addr show scope global | ${pkgs.gawk}/bin/awk '{ split($4, a, "/"); print a[1]; exit }')"
-        if [ -n "$ip" ]; then
+        addr="$(${pkgs.iproute2}/bin/ip -4 -o addr show scope global | ${pkgs.gawk}/bin/awk '{ split($4, a, "/"); print $2 " " a[1]; exit }')"
+        if [ -n "$addr" ]; then
+          set -- $addr
+          iface="$1"
+          ip="$2"
+
+          ${pkgs.iputils}/bin/arping -q -U -c 1 -I "$iface" "$ip" || true
           printf '%s\n' "$ip" > /mnt/agent-sandbox/control/guest-ip
           exit 0
         fi
