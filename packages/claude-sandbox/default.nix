@@ -1,4 +1,4 @@
-{ flake, inputs, pkgs, system, extraModules ? [ ], showBootLogs ? false, enableSshServer ? true, sshMaxAttempts ? 15, ... }:
+{ flake, inputs, pkgs, system, extraModules ? [ ], showBootLogs ? false, enableSshServer ? true, sshMaxAttempts ? 60, ... }:
 
 flake.lib.mkSandboxPackage {
   inherit pkgs system extraModules showBootLogs enableSshServer sshMaxAttempts;

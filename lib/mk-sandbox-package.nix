@@ -7,7 +7,7 @@
 , extraModules ? [ ]
 , showBootLogs ? false
 , enableSshServer ? true
-, sshMaxAttempts ? 15
+, sshMaxAttempts ? 60
 , launcherScript
 }:
 
