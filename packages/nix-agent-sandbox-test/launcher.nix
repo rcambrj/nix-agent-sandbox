@@ -36,6 +36,7 @@ hostPkgs.testers.runNixOSTest {
     import subprocess
     import tempfile
     import threading
+    import time
     import contextlib
 
     generic_launcher = ${builtins.toJSON genericLauncher}
@@ -47,19 +48,33 @@ hostPkgs.testers.runNixOSTest {
 
     # --- Generic mock-sandbox tests ---
 
-    def run_cmd(cmd, expect_success=True, input_text=None):
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=300,
-            input=input_text,
-        )
+    def describe_cmd(cmd):
+        exe = os.path.basename(cmd[0])
+        return " ".join([exe] + cmd[1:])
+
+    def run_cmd(cmd, expect_success=True, input_text=None, label=None):
+        label = label or describe_cmd(cmd)
+        started = time.monotonic()
+        print(f"START {label}", flush=True)
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=300,
+                input=input_text,
+            )
+        except subprocess.TimeoutExpired as exc:
+            elapsed = time.monotonic() - started
+            print(f"TIMEOUT {label} after {elapsed:.1f}s", flush=True)
+            raise exc
+        elapsed = time.monotonic() - started
+        print(f"END {label} rc={result.returncode} elapsed={elapsed:.1f}s", flush=True)
         if expect_success and result.returncode != 0:
-            raise Exception(f"exit {result.returncode}: {result.stdout}")
+            raise Exception(f"{label} exit {result.returncode}: {result.stdout}")
         if not expect_success and result.returncode == 0:
-            raise Exception(f"expected failure, got success: {result.stdout}")
+            raise Exception(f"{label} expected failure, got success: {result.stdout}")
         return result.stdout
 
     def find_opencode_db_files(base_dir):
@@ -109,6 +124,8 @@ hostPkgs.testers.runNixOSTest {
     env_file = os.path.join(env_dir, "env")
     with open(env_file, "w") as f:
         f.write("TEST_AGENT_ENV_VAR=hello-from-env\n")
+
+    print("SECTION mock-sandbox", flush=True)
 
     out = run_cmd([generic_launcher, "--", "hello", "world"])
     assert "TEST_AGENT_ARGS_START" in out, f"expected args start marker, got: {out!r}"
@@ -160,6 +177,8 @@ hostPkgs.testers.runNixOSTest {
     out = run_cmd([generic_launcher, "--expose-host-ports=21434,21434", "--", "hello"], expect_success=False)
     assert "duplicate host port" in out, f"expected duplicate expose-host-ports failure, got: {out!r}"
 
+    print("START mock fail-stderr streaming", flush=True)
+    stderr_started = time.monotonic()
     proc = subprocess.Popen(
         [generic_launcher, "--", "fail-stderr"],
         stdout=subprocess.PIPE,
@@ -175,12 +194,14 @@ hostPkgs.testers.runNixOSTest {
             break
         live_output.append(line)
         if "TEST_AGENT_STDERR_START" in line:
+            print(f"PROGRESS mock fail-stderr marker elapsed={time.monotonic() - stderr_started:.1f}s", flush=True)
             assert proc.poll() is None, "expected failing sandbox command to still be running while stderr is streaming"
             break
 
     assert any("TEST_AGENT_STDERR_START" in line for line in live_output), f"expected live stderr start marker, got: {live_output!r}"
     proc.wait(timeout=300)
     remaining_output = proc.stdout.read()
+    print(f"END mock fail-stderr streaming rc={proc.returncode} elapsed={time.monotonic() - stderr_started:.1f}s", flush=True)
     out = "".join(live_output) + remaining_output
     assert "TEST_AGENT_STDERR_END" in out, f"expected live stderr end marker, got: {out!r}"
     assert out.count("TEST_AGENT_STDERR_START") >= 2, f"expected live stderr plus failure reprint, got: {out!r}"
@@ -203,6 +224,9 @@ hostPkgs.testers.runNixOSTest {
     concurrent_results = []
 
     def _run_generic_concurrent(instance_id):
+        label = f"mock concurrent launcher {instance_id}"
+        started = time.monotonic()
+        print(f"START {label}", flush=True)
         result = subprocess.run(
             [generic_launcher, "--", "hello", f"instance-{instance_id}"],
             stdout=subprocess.PIPE,
@@ -210,14 +234,18 @@ hostPkgs.testers.runNixOSTest {
             text=True,
             timeout=300,
         )
+        print(f"END {label} rc={result.returncode} elapsed={time.monotonic() - started:.1f}s", flush=True)
         concurrent_results.append((instance_id, result.returncode, result.stdout))
 
+    print("START mock concurrent launchers", flush=True)
+    concurrent_started = time.monotonic()
     t1 = threading.Thread(target=_run_generic_concurrent, args=(1,))
     t2 = threading.Thread(target=_run_generic_concurrent, args=(2,))
     t1.start()
     t2.start()
     t1.join(timeout=330)
     t2.join(timeout=330)
+    print(f"END mock concurrent launchers results={len(concurrent_results)} elapsed={time.monotonic() - concurrent_started:.1f}s", flush=True)
 
     assert len(concurrent_results) == 2, f"expected two concurrent launcher results, got: {concurrent_results!r}"
     for instance_id, rc, out in concurrent_results:
@@ -230,6 +258,8 @@ hostPkgs.testers.runNixOSTest {
     os.rmdir(env_dir)
 
     # --- OpenCode sandbox tests ---
+
+    print("SECTION opencode-sandbox", flush=True)
 
     env_dir = tempfile.mkdtemp(prefix="opencode-sandbox-test-env-")
     env_file = os.path.join(env_dir, "env")
@@ -325,6 +355,8 @@ hostPkgs.testers.runNixOSTest {
     shutil.rmtree(config_dir)
 
     # --- Claude sandbox tests ---
+
+    print("SECTION claude-sandbox", flush=True)
 
     config_dir = tempfile.mkdtemp(prefix="claude-sandbox-test-config-")
     with open(os.path.join(config_dir, "settings.json"), "w") as f:
